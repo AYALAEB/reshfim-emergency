@@ -9,8 +9,9 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   AlertTriangle, ArrowRight, MessageCircle, CheckCircle2,
-  XCircle, HelpCircle, Clock, Phone, RefreshCw, Send
+  XCircle, HelpCircle, Clock, Phone, RefreshCw, Send, Download, FileSpreadsheet
 } from "lucide-react";
+import * as XLSX from "xlsx";
 import type { Event, Contact, Report } from "@shared/schema";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -78,18 +79,73 @@ export default function EventDetail() {
     );
   }
 
+  // Match reports to contacts — by contactId OR by phone number
+  function findReport(contact: Contact) {
+    return reports.find(r =>
+      (r.contactId != null && r.contactId === contact.id) ||
+      (r.phone && contact.phone && r.phone.replace(/\D/g, "") === contact.phone.replace(/\D/g, ""))
+    );
+  }
+
   const reportedIds = new Set(reports.map(r => r.contactId).filter(Boolean));
 
-  // Build stats
+  // Build stats — based on matched contacts
   const total = contacts.length;
-  const reported = reports.length;
-  const inKibbutz = reports.filter(r => r.status === "in_kibbutz").length;
-  const outKibbutz = reports.filter(r => r.status === "out_kibbutz").length;
-  const needHelp = reports.filter(r => r.status === "need_help").length;
+  const matchedReports = contacts.map(c => findReport(c)).filter(Boolean);
+  const reported = matchedReports.length;
+  const inKibbutz = matchedReports.filter(r => r!.status === "in_kibbutz").length;
+  const outKibbutz = matchedReports.filter(r => r!.status === "out_kibbutz").length;
+  const needHelp = matchedReports.filter(r => r!.status === "need_help").length;
   const pending = Math.max(0, total - reported);
   const pct = total > 0 ? Math.round((reported / total) * 100) : 0;
 
   const helpReports = reports.filter(r => r.status === "need_help");
+
+  // Export personal links to Excel
+  function exportLinks() {
+    const rows = contacts.map(c => ({
+      שם: c.name,
+      טלפון: c.phone,
+      "קישור אישי לדיווח": `${baseUrl}/#/report/${eventId}/${c.id}`,
+      "הודעת ווטסאפ": `שלום ${c.name},\n\nקיבוץ רשפים — ${event?.name}\n\nנא לדווח על מצבך:\n${baseUrl}/#/report/${eventId}/${c.id}\n\nתודה 🙏`,
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [{ wch: 20 }, { wch: 15 }, { wch: 55 }, { wch: 80 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "קישורים");
+    XLSX.writeFile(wb, `קישורי-דיווח-${event?.name || eventId}.xlsx`);
+  }
+
+  // Export all reports to Excel
+  function exportReports() {
+    const reportMap = new Map(reports.map(r => [r.contactId, r]));
+    const rows = contacts.map(c => {
+      const r = reportMap.get(c.id);
+      return {
+        שם: c.name,
+        טלפון: c.phone,
+        סטטוס: r ? STATUS_LABELS[r.status] : "לא דיווח",
+        "זמן דיווח": r?.reportedAt ? new Date(r.reportedAt).toLocaleString("he-IL") : "",
+        הערות: r?.details || "",
+      };
+    });
+    // Also add manual reports (no contactId)
+    const manualReports = reports.filter(r => !r.contactId);
+    manualReports.forEach(r => {
+      rows.push({
+        שם: r.name || "לא ידוע",
+        טלפון: r.phone || "",
+        סטטוס: STATUS_LABELS[r.status] || r.status,
+        "זמן דיווח": r.reportedAt ? new Date(r.reportedAt).toLocaleString("he-IL") : "",
+        הערות: r.details || "",
+      });
+    });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [{ wch: 20 }, { wch: 15 }, { wch: 25 }, { wch: 20 }, { wch: 30 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "דיווחים");
+    XLSX.writeFile(wb, `דיווחים-${event?.name || eventId}.xlsx`);
+  }
 
   return (
     <div className="space-y-5">
@@ -166,6 +222,38 @@ export default function EventDetail() {
         </CardContent>
       </Card>
 
+      {/* Export buttons */}
+      {contacts.length > 0 && (
+        <Card>
+          <CardContent className="p-4 space-y-3">
+            <p className="font-semibold text-sm flex items-center gap-2">
+              <Download size={15} className="text-primary" />
+              ייצוא לאקסל
+            </p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <Button
+                variant="outline"
+                className="w-full gap-2 text-sm"
+                onClick={exportLinks}
+                data-testid="button-export-links"
+              >
+                <FileSpreadsheet size={15} className="text-green-600" />
+                ייצא קישורים אישיים
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full gap-2 text-sm"
+                onClick={exportReports}
+                data-testid="button-export-reports"
+              >
+                <FileSpreadsheet size={15} className="text-blue-600" />
+                ייצא דיווחים מלאים
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Send to all */}
       {contacts.length > 0 && (
         <Card>
@@ -225,7 +313,7 @@ export default function EventDetail() {
           ) : (
             <div className="divide-y divide-border">
               {contacts.map(contact => {
-                const report = reports.find(r => r.contactId === contact.id);
+                const report = findReport(contact);
                 const reportUrl = `${baseUrl}/#/report/${eventId}/${contact.id}`;
                 const waMsg = buildWhatsAppMessage(event.name, reportUrl, contact.name);
                 const waPhone = contact.phone.replace(/\D/g, "");
