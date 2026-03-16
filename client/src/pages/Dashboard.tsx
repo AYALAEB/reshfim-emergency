@@ -55,8 +55,14 @@ export default function Dashboard() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/events"] }),
   });
 
-  const activeEvents = events.filter(e => e.isActive);
-  const pastEvents = events.filter(e => !e.isActive);
+  // normalize: handle both isActive and active (DB might return either)
+  const normalizedEvents = events.map((e: any) => ({
+    ...e,
+    isActive: e.isActive ?? e.active ?? e.is_active ?? true,
+    createdAt: e.createdAt ?? e.created_at ?? "",
+  }));
+  const activeEvents = normalizedEvents.filter(e => e.isActive);
+  const pastEvents = normalizedEvents.filter(e => !e.isActive);
 
   return (
     <div className="space-y-6">

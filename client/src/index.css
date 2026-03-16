@@ -4,54 +4,72 @@
 
 @layer base {
   :root {
+    /* Emergency / civic app palette — authoritative red + neutral slate */
     --background: 220 20% 97%;
-    --foreground: 220 20% 10%;
+    --foreground: 220 25% 12%;
+
     --card: 0 0% 100%;
-    --card-foreground: 220 20% 10%;
+    --card-foreground: 220 25% 12%;
+
     --popover: 0 0% 100%;
-    --popover-foreground: 220 20% 10%;
-    --primary: 0 72% 42%;
+    --popover-foreground: 220 25% 12%;
+
+    --primary: 4 85% 45%;           /* Emergency red */
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 14% 93%;
-    --secondary-foreground: 220 20% 20%;
-    --muted: 220 14% 93%;
-    --muted-foreground: 220 10% 46%;
-    --accent: 220 14% 93%;
-    --accent-foreground: 220 20% 20%;
-    --destructive: 0 84% 60%;
+
+    --secondary: 220 15% 93%;
+    --secondary-foreground: 220 25% 20%;
+
+    --muted: 220 15% 93%;
+    --muted-foreground: 220 15% 50%;
+
+    --accent: 220 15% 88%;
+    --accent-foreground: 220 25% 15%;
+
+    --destructive: 4 85% 45%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 13% 88%;
-    --input: 220 13% 88%;
-    --ring: 0 72% 42%;
-    --radius: 0.5rem;
+
+    --border: 220 15% 88%;
+    --input: 220 15% 88%;
+    --ring: 4 85% 45%;
+
+    --radius: 0.75rem;
 
     /* Status colors */
-    --status-green: 142 71% 45%;
-    --status-blue: 210 79% 50%;
-    --status-red: 0 84% 55%;
-    --status-gray: 220 10% 70%;
+    --status-in: 142 70% 38%;       /* Green — in kibbutz */
+    --status-out: 215 80% 48%;      /* Blue — out kibbutz */
+    --status-help: 4 85% 45%;       /* Red — needs help */
+    --status-pending: 220 15% 65%;  /* Gray — no report */
   }
 
   .dark {
-    --background: 220 20% 8%;
+    --background: 220 25% 8%;
     --foreground: 220 10% 95%;
-    --card: 220 20% 12%;
+
+    --card: 220 25% 11%;
     --card-foreground: 220 10% 95%;
-    --popover: 220 20% 12%;
+
+    --popover: 220 25% 11%;
     --popover-foreground: 220 10% 95%;
-    --primary: 0 72% 52%;
+
+    --primary: 4 85% 55%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 14% 18%;
-    --secondary-foreground: 220 10% 85%;
-    --muted: 220 14% 18%;
-    --muted-foreground: 220 10% 55%;
-    --accent: 220 14% 18%;
-    --accent-foreground: 220 10% 85%;
-    --destructive: 0 62% 50%;
+
+    --secondary: 220 20% 18%;
+    --secondary-foreground: 220 10% 90%;
+
+    --muted: 220 20% 18%;
+    --muted-foreground: 220 15% 60%;
+
+    --accent: 220 20% 22%;
+    --accent-foreground: 220 10% 90%;
+
+    --destructive: 4 85% 55%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 13% 22%;
-    --input: 220 13% 22%;
-    --ring: 0 72% 52%;
+
+    --border: 220 20% 22%;
+    --input: 220 20% 22%;
+    --ring: 4 85% 55%;
   }
 }
 
@@ -61,59 +79,43 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'Assistant', 'Heebo', system-ui, sans-serif;
     direction: rtl;
   }
-
-  /* RTL support */
-  [dir="rtl"] .ml-auto { margin-left: unset; margin-right: auto; }
-  [dir="rtl"] .mr-auto { margin-right: unset; margin-left: auto; }
 }
 
 /* Status badge colors */
-.status-in-kibbutz {
-  background-color: hsl(142 71% 45% / 0.15);
-  color: hsl(142 71% 35%);
-  border-color: hsl(142 71% 45% / 0.3);
+.status-in {
+  background-color: hsl(var(--status-in));
+  color: white;
 }
-.status-out-kibbutz {
-  background-color: hsl(210 79% 50% / 0.15);
-  color: hsl(210 79% 40%);
-  border-color: hsl(210 79% 50% / 0.3);
+.status-out {
+  background-color: hsl(var(--status-out));
+  color: white;
 }
-.status-need-help {
-  background-color: hsl(0 84% 55% / 0.15);
-  color: hsl(0 84% 45%);
-  border-color: hsl(0 84% 55% / 0.3);
+.status-help {
+  background-color: hsl(var(--status-help));
+  color: white;
 }
-.status-no-report {
-  background-color: hsl(220 10% 70% / 0.15);
-  color: hsl(220 10% 50%);
-  border-color: hsl(220 10% 70% / 0.3);
+.status-pending {
+  background-color: hsl(var(--status-pending));
+  color: white;
 }
 
-.dark .status-in-kibbutz {
-  background-color: hsl(142 71% 45% / 0.2);
-  color: hsl(142 71% 60%);
-}
-.dark .status-out-kibbutz {
-  background-color: hsl(210 79% 50% / 0.2);
-  color: hsl(210 79% 65%);
-}
-.dark .status-need-help {
-  background-color: hsl(0 84% 55% / 0.2);
-  color: hsl(0 84% 70%);
-}
-.dark .status-no-report {
-  background-color: hsl(220 10% 70% / 0.1);
-  color: hsl(220 10% 65%);
+/* Mobile bottom nav */
+.mobile-nav {
+  @apply fixed bottom-0 left-0 right-0 bg-card border-t border-border z-50 flex md:hidden;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* Pulse animation for need-help */
-@keyframes pulse-red {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+/* Touch target minimum 44px */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
 }
-.pulse-red {
-  animation: pulse-red 1.5s ease-in-out infinite;
+
+/* Report button — big on mobile */
+.report-btn {
+  @apply w-full py-5 text-lg font-semibold rounded-2xl flex items-center justify-center gap-3;
+  min-height: 72px;
 }
