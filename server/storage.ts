@@ -1,110 +1,101 @@
-import { Event, Contact, Report, InsertEvent, InsertContact, InsertReport } from "@shared/schema";
+import type { Contact, InsertContact, Event, InsertEvent, Report, InsertReport } from "@shared/schema";
 
 export interface IStorage {
-  // Events
-  getEvents(): Promise<Event[]>;
-  getEvent(id: number): Promise<Event | undefined>;
-  createEvent(event: InsertEvent): Promise<Event>;
-  updateEvent(id: number, data: Partial<Event>): Promise<Event | undefined>;
-  deleteEvent(id: number): Promise<void>;
+  getContacts(): Contact[];
+  getContact(id: number): Contact | undefined;
+  addContact(contact: InsertContact): Contact;
+  updateContact(id: number, contact: Partial<InsertContact>): Contact | undefined;
+  deleteContact(id: number): boolean;
+  clearContacts(): void;
 
-  // Contacts
-  getContacts(): Promise<Contact[]>;
-  getContact(id: number): Promise<Contact | undefined>;
-  createContact(contact: InsertContact): Promise<Contact>;
-  updateContact(id: number, data: Partial<Contact>): Promise<Contact | undefined>;
-  deleteContact(id: number): Promise<void>;
-  bulkCreateContacts(contacts: InsertContact[]): Promise<Contact[]>;
+  getEvents(): Event[];
+  getEvent(id: number): Event | undefined;
+  createEvent(event: InsertEvent): Event;
+  deleteEvent(id: number): boolean;
 
-  // Reports
-  getReportsByEvent(eventId: number): Promise<Report[]>;
-  createReport(report: InsertReport): Promise<Report>;
-  getReportByEventAndContact(eventId: number, contactId: number): Promise<Report | undefined>;
+  getReportsByEvent(eventId: number): Report[];
+  addReport(report: InsertReport): Report;
 }
 
-export class MemStorage implements IStorage {
-  private events: Map<number, Event> = new Map();
-  private contacts: Map<number, Contact> = new Map();
-  private reports: Map<number, Report> = new Map();
-  private eventCounter = 1;
-  private contactCounter = 1;
-  private reportCounter = 1;
+class MemStorage implements IStorage {
+  private _contacts: Contact[] = [];
+  private _events: Event[] = [];
+  private _reports: Report[] = [];
+  private contactSeq = 1;
+  private eventSeq = 1;
+  private reportSeq = 1;
 
-  async getEvents(): Promise<Event[]> {
-    return Array.from(this.events.values()).sort((a, b) => b.id - a.id);
+  getContacts(): Contact[] { return this._contacts; }
+
+  getContact(id: number): Contact | undefined {
+    return this._contacts.find(c => c.id === id);
   }
 
-  async getEvent(id: number): Promise<Event | undefined> {
-    return this.events.get(id);
+  addContact(data: InsertContact): Contact {
+    const c: Contact = { id: this.contactSeq++, name: data.name, phone: data.phone };
+    this._contacts.push(c);
+    return c;
   }
 
-  async createEvent(data: InsertEvent): Promise<Event> {
-    const event: Event = { ...data, id: this.eventCounter++ };
-    this.events.set(event.id, event);
-    return event;
+  updateContact(id: number, data: Partial<InsertContact>): Contact | undefined {
+    const idx = this._contacts.findIndex(c => c.id === id);
+    if (idx === -1) return undefined;
+    this._contacts[idx] = { ...this._contacts[idx], ...data };
+    return this._contacts[idx];
   }
 
-  async updateEvent(id: number, data: Partial<Event>): Promise<Event | undefined> {
-    const existing = this.events.get(id);
-    if (!existing) return undefined;
-    const updated = { ...existing, ...data };
-    this.events.set(id, updated);
-    return updated;
+  deleteContact(id: number): boolean {
+    const idx = this._contacts.findIndex(c => c.id === id);
+    if (idx === -1) return false;
+    this._contacts.splice(idx, 1);
+    return true;
   }
 
-  async deleteEvent(id: number): Promise<void> {
-    this.events.delete(id);
+  clearContacts(): void { this._contacts = []; }
+
+  getEvents(): Event[] { return [...this._events].reverse(); }
+
+  getEvent(id: number): Event | undefined {
+    return this._events.find(e => e.id === id);
   }
 
-  async getContacts(): Promise<Contact[]> {
-    return Array.from(this.contacts.values()).sort((a, b) => a.name.localeCompare(b.name, "he"));
+  createEvent(data: InsertEvent): Event {
+    const e: Event = { id: this.eventSeq++, name: data.name, createdAt: data.createdAt, active: data.active ?? "true" };
+    this._events.push(e);
+    return e;
   }
 
-  async getContact(id: number): Promise<Contact | undefined> {
-    return this.contacts.get(id);
+  deleteEvent(id: number): boolean {
+    const idx = this._events.findIndex(e => e.id === id);
+    if (idx === -1) return false;
+    this._events.splice(idx, 1);
+    return true;
   }
 
-  async createContact(data: InsertContact): Promise<Contact> {
-    const contact: Contact = { ...data, id: this.contactCounter++ };
-    this.contacts.set(contact.id, contact);
-    return contact;
+  getReportsByEvent(eventId: number): Report[] {
+    return this._reports.filter(r => r.eventId === eventId);
   }
 
-  async updateContact(id: number, data: Partial<Contact>): Promise<Contact | undefined> {
-    const existing = this.contacts.get(id);
-    if (!existing) return undefined;
-    const updated = { ...existing, ...data };
-    this.contacts.set(id, updated);
-    return updated;
-  }
-
-  async deleteContact(id: number): Promise<void> {
-    this.contacts.delete(id);
-  }
-
-  async bulkCreateContacts(contactsData: InsertContact[]): Promise<Contact[]> {
-    const created: Contact[] = [];
-    for (const data of contactsData) {
-      const contact = await this.createContact(data);
-      created.push(contact);
-    }
-    return created;
-  }
-
-  async getReportsByEvent(eventId: number): Promise<Report[]> {
-    return Array.from(this.reports.values()).filter(r => r.eventId === eventId);
-  }
-
-  async createReport(data: InsertReport): Promise<Report> {
-    const report: Report = { ...data, id: this.reportCounter++ };
-    this.reports.set(report.id, report);
-    return report;
-  }
-
-  async getReportByEventAndContact(eventId: number, contactId: number): Promise<Report | undefined> {
-    return Array.from(this.reports.values()).find(
-      r => r.eventId === eventId && r.contactId === contactId
+  addReport(data: InsertReport): Report {
+    const existing = this._reports.findIndex(
+      r => r.eventId === data.eventId && r.contactId === data.contactId
     );
+    if (existing !== -1) {
+      this._reports[existing] = { ...this._reports[existing], ...data };
+      return this._reports[existing];
+    }
+    const r: Report = {
+      id: this.reportSeq++,
+      eventId: data.eventId,
+      contactId: data.contactId,
+      contactName: data.contactName,
+      contactPhone: data.contactPhone,
+      status: data.status,
+      details: data.details ?? null,
+      reportedAt: data.reportedAt,
+    };
+    this._reports.push(r);
+    return r;
   }
 }
 

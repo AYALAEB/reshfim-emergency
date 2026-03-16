@@ -1,98 +1,99 @@
 import type { Express } from "express";
-import { createServer, type Server } from "http";
+import { type Server } from "http";
 import { storage } from "./storage";
-import { insertEventSchema, insertContactSchema, insertReportSchema } from "@shared/schema";
+import { insertContactSchema, insertEventSchema, insertReportSchema } from "@shared/schema";
 import { z } from "zod";
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
-  // ---- EVENTS ----
-  app.get("/api/events", async (req, res) => {
-    const events = await storage.getEvents();
-    res.json(events);
-  });
-
-  app.get("/api/events/:id", async (req, res) => {
-    const event = await storage.getEvent(Number(req.params.id));
-    if (!event) return res.status(404).json({ message: "אירוע לא נמצא" });
-    res.json(event);
-  });
-
-  app.post("/api/events", async (req, res) => {
-    const parsed = insertEventSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
-    const event = await storage.createEvent(parsed.data);
-    res.status(201).json(event);
-  });
-
-  app.patch("/api/events/:id", async (req, res) => {
-    const event = await storage.updateEvent(Number(req.params.id), req.body);
-    if (!event) return res.status(404).json({ message: "אירוע לא נמצא" });
-    res.json(event);
-  });
-
-  app.delete("/api/events/:id", async (req, res) => {
-    await storage.deleteEvent(Number(req.params.id));
-    res.json({ ok: true });
-  });
-
   // ---- CONTACTS ----
-  app.get("/api/contacts", async (req, res) => {
-    const contacts = await storage.getContacts();
-    res.json(contacts);
+  app.get("/api/contacts", (req, res) => {
+    res.json(storage.getContacts());
   });
 
-  app.get("/api/contacts/:id", async (req, res) => {
-    const contact = await storage.getContact(Number(req.params.id));
-    if (!contact) return res.status(404).json({ message: "איש קשר לא נמצא" });
+  app.get("/api/contacts/:id", (req, res) => {
+    const id = parseInt(req.params.id);
+    const contact = storage.getContact(id);
+    if (!contact) return res.status(404).json({ error: "Not found" });
     res.json(contact);
   });
 
-  app.post("/api/contacts", async (req, res) => {
+  app.post("/api/contacts", (req, res) => {
     const parsed = insertContactSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
-    const contact = await storage.createContact(parsed.data);
-    res.status(201).json(contact);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error });
+    const contact = storage.addContact(parsed.data);
+    res.json(contact);
   });
 
-  app.post("/api/contacts/bulk", async (req, res) => {
+  app.put("/api/contacts/:id", (req, res) => {
+    const id = parseInt(req.params.id);
+    const parsed = insertContactSchema.partial().safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error });
+    const updated = storage.updateContact(id, parsed.data);
+    if (!updated) return res.status(404).json({ error: "Not found" });
+    res.json(updated);
+  });
+
+  app.delete("/api/contacts/:id", (req, res) => {
+    const id = parseInt(req.params.id);
+    const ok = storage.deleteContact(id);
+    if (!ok) return res.status(404).json({ error: "Not found" });
+    res.json({ success: true });
+  });
+
+  // Bulk import
+  app.post("/api/contacts/bulk", (req, res) => {
     const schema = z.array(insertContactSchema);
     const parsed = schema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
-    const contacts = await storage.bulkCreateContacts(parsed.data);
-    res.status(201).json(contacts);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error });
+    const added = parsed.data.map(c => storage.addContact(c));
+    res.json(added);
   });
 
-  app.patch("/api/contacts/:id", async (req, res) => {
-    const contact = await storage.updateContact(Number(req.params.id), req.body);
-    if (!contact) return res.status(404).json({ message: "איש קשר לא נמצא" });
-    res.json(contact);
+  // Clear all contacts
+  app.delete("/api/contacts", (req, res) => {
+    storage.clearContacts();
+    res.json({ success: true });
   });
 
-  app.delete("/api/contacts/:id", async (req, res) => {
-    await storage.deleteContact(Number(req.params.id));
-    res.json({ ok: true });
+  // ---- EVENTS ----
+  app.get("/api/events", (req, res) => {
+    res.json(storage.getEvents());
+  });
+
+  app.get("/api/events/:id", (req, res) => {
+    const id = parseInt(req.params.id);
+    const event = storage.getEvent(id);
+    if (!event) return res.status(404).json({ error: "Not found" });
+    res.json(event);
+  });
+
+  app.post("/api/events", (req, res) => {
+    const parsed = insertEventSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error });
+    const event = storage.createEvent(parsed.data);
+    res.json(event);
+  });
+
+  app.delete("/api/events/:id", (req, res) => {
+    const id = parseInt(req.params.id);
+    const ok = storage.deleteEvent(id);
+    if (!ok) return res.status(404).json({ error: "Not found" });
+    res.json({ success: true });
   });
 
   // ---- REPORTS ----
-  app.get("/api/events/:eventId/reports", async (req, res) => {
-    const reports = await storage.getReportsByEvent(Number(req.params.eventId));
+  app.get("/api/events/:id/reports", (req, res) => {
+    const id = parseInt(req.params.id);
+    const reports = storage.getReportsByEvent(id);
     res.json(reports);
   });
 
-  app.post("/api/reports", async (req, res) => {
-    const parsed = insertReportSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
-    const report = await storage.createReport(parsed.data);
-    res.status(201).json(report);
-  });
-
-  // Check if contact already reported for an event
-  app.get("/api/events/:eventId/reports/contact/:contactId", async (req, res) => {
-    const report = await storage.getReportByEventAndContact(
-      Number(req.params.eventId),
-      Number(req.params.contactId)
-    );
-    res.json(report || null);
+  app.post("/api/events/:id/reports", (req, res) => {
+    const eventId = parseInt(req.params.id);
+    const parsed = insertReportSchema.safeParse({ ...req.body, eventId });
+    if (!parsed.success) return res.status(400).json({ error: parsed.error });
+    const report = storage.addReport(parsed.data);
+    res.json(report);
   });
 
   return httpServer;

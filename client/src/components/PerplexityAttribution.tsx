@@ -1,11 +1,11 @@
-export default function PerplexityAttribution() {
+export function PerplexityAttribution() {
   return (
-    <footer className="text-center py-4 mt-8 border-t border-border">
+    <footer className="w-full py-4 text-center text-xs text-muted-foreground">
       <a
         href="https://www.perplexity.ai/computer"
         target="_blank"
         rel="noopener noreferrer"
-        className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+        className="hover:text-foreground transition-colors"
       >
         Created with Perplexity Computer
       </a>
