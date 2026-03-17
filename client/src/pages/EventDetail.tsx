@@ -316,7 +316,9 @@ export default function EventDetail() {
                 const report = findReport(contact);
                 const reportUrl = `${baseUrl}/#/report/${eventId}/${contact.id}`;
                 const waMsg = buildWhatsAppMessage(event.name, reportUrl, contact.name);
-                const waPhone = contact.phone.replace(/\D/g, "");
+                // Convert Israeli phone to international format (05X -> 9725X)
+                const rawPhone = contact.phone.replace(/\D/g, "");
+                const waPhone = rawPhone.startsWith("0") ? "972" + rawPhone.slice(1) : rawPhone;
 
                 return (
                   <div
