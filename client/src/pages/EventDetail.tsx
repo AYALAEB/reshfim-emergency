@@ -79,11 +79,19 @@ export default function EventDetail() {
     );
   }
 
-  // Match reports to contacts — by contactId OR by phone number
+  // Normalize phone: strip non-digits, remove leading 972 or 0, get 9-digit local number
+  function normalizePhone(phone: string) {
+    const digits = phone.replace(/\D/g, "");
+    if (digits.startsWith("972")) return digits.slice(3);
+    if (digits.startsWith("0")) return digits.slice(1);
+    return digits;
+  }
+
+  // Match reports to contacts — by contactId OR by normalized phone number
   function findReport(contact: Contact) {
     return reports.find(r =>
       (r.contactId != null && r.contactId === contact.id) ||
-      (r.phone && contact.phone && r.phone.replace(/\D/g, "") === contact.phone.replace(/\D/g, ""))
+      (r.phone && contact.phone && normalizePhone(r.phone) === normalizePhone(contact.phone))
     );
   }
 
@@ -298,9 +306,8 @@ export default function EventDetail() {
         const unmatched = reports.filter(r => {
           if (r.contactId) return false;
           // check if phone matches any contact
-          const phone = r.phone?.replace(/\D/g, "");
-          if (!phone) return true;
-          return !contacts.some(c => c.phone.replace(/\D/g, "") === phone);
+          if (!r.phone) return true;
+          return !contacts.some(c => normalizePhone(c.phone) === normalizePhone(r.phone!));
         });
         if (unmatched.length === 0) return null;
         return (
