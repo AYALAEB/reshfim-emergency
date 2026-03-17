@@ -161,7 +161,7 @@ export default function Report() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>טלפון (לא חובה)</Label>
+                <Label>טלפון <span className="text-destructive">*</span></Label>
                 <Input
                   placeholder="05X-XXXXXXX"
                   type="tel"
@@ -170,6 +170,7 @@ export default function Report() {
                   onChange={e => setManualPhone(e.target.value)}
                   data-testid="input-manual-phone"
                 />
+                <p className="text-xs text-muted-foreground">נדרש לזיהוי בדוחות</p>
               </div>
             </div>
           )}
@@ -213,7 +214,7 @@ export default function Report() {
           {/* Submit */}
           <Button
             className="w-full py-6 text-base font-bold"
-            disabled={!selectedStatus || submitReport.isPending || (!contact && !manualName.trim())}
+            disabled={!selectedStatus || submitReport.isPending || (!contact && !manualName.trim()) || (!contact && !manualPhone.trim())}
             onClick={handleSubmit}
             data-testid="button-submit-report"
           >

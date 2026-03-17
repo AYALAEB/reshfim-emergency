@@ -293,6 +293,43 @@ export default function EventDetail() {
         </Card>
       )}
 
+      {/* Unmatched reports — general link reporters */}
+      {(() => {
+        const unmatched = reports.filter(r => {
+          if (r.contactId) return false;
+          // check if phone matches any contact
+          const phone = r.phone?.replace(/\D/g, "");
+          if (!phone) return true;
+          return !contacts.some(c => c.phone.replace(/\D/g, "") === phone);
+        });
+        if (unmatched.length === 0) return null;
+        return (
+          <Card>
+            <CardHeader className="pb-2 px-4 pt-4">
+              <CardTitle className="text-base flex items-center gap-2">
+                <CheckCircle2 size={16} className="text-primary" />
+                דיווחו ללא זיהוי ({unmatched.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="divide-y divide-border">
+                {unmatched.map(r => (
+                  <div key={r.id} className="flex items-center gap-3 px-4 py-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{r.name || "לא ידוע"}</p>
+                      <p className="text-xs text-muted-foreground">{r.phone || ""}</p>
+                    </div>
+                    <Badge className={`${STATUS_CLASS[r.status]} text-xs whitespace-nowrap`}>
+                      {STATUS_LABELS[r.status]}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
+
       {/* Contacts list */}
       <Card>
         <CardHeader className="pb-2 px-4 pt-4">
