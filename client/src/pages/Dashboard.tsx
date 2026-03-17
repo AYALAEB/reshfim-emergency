@@ -56,13 +56,19 @@ export default function Dashboard() {
   });
 
   // normalize: handle both isActive and active (DB might return either)
+  function parseActive(e: any): boolean {
+    const val = e.isActive ?? e.active ?? e.is_active;
+    if (val === true || val === "true") return true;
+    if (val === false || val === "false") return false;
+    return true; // default new events to active
+  }
   const normalizedEvents = events.map((e: any) => ({
     ...e,
-    isActive: e.isActive ?? e.active ?? e.is_active ?? true,
+    isActive: parseActive(e),
     createdAt: e.createdAt ?? e.created_at ?? "",
   }));
-  const activeEvents = normalizedEvents.filter(e => e.isActive);
-  const pastEvents = normalizedEvents.filter(e => !e.isActive);
+  const activeEvents = normalizedEvents.filter(e => e.isActive === true);
+  const pastEvents = normalizedEvents.filter(e => e.isActive === false);
 
   return (
     <div className="space-y-6">

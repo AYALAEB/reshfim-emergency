@@ -86,6 +86,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ ok: true });
   });
 
+  app.delete("/api/contacts", async (req, res) => {
+    const contacts = await storage.getContacts();
+    for (const c of contacts) {
+      await storage.deleteContact(c.id);
+    }
+    res.json({ ok: true, deleted: contacts.length });
+  });
+
   // ---- REPORTS ----
   app.get("/api/events/:eventId/reports", async (req, res) => {
     const reports = await storage.getReportsByEvent(Number(req.params.eventId));

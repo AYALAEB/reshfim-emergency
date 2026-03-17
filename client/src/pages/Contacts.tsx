@@ -15,7 +15,7 @@ import {
   AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
   AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger
 } from "@/components/ui/alert-dialog";
-import { Plus, Trash2, Upload, FileSpreadsheet, Search, Edit2, Check, X, Users } from "lucide-react";
+import { Plus, Trash2, Upload, FileSpreadsheet, Search, Edit2, Check, X, Users, Eraser } from "lucide-react";
 import * as XLSX from "xlsx";
 import type { Contact, InsertContact } from "@shared/schema";
 
@@ -60,6 +60,14 @@ export default function Contacts() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
       toast({ title: "איש קשר נמחק" });
+    },
+  });
+
+  const clearAllContacts = useMutation({
+    mutationFn: () => apiRequest("DELETE", `/api/contacts`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      toast({ title: "רשימת אנשי הקשר נוקתה" });
     },
   });
 
@@ -163,6 +171,34 @@ export default function Contacts() {
           <p className="text-sm text-muted-foreground">{contacts.length} איש קשר</p>
         </div>
         <div className="flex gap-2">
+          {/* Clear all */}
+          {contacts.length > 0 && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1 text-destructive border-destructive/30 hover:bg-destructive/10" data-testid="button-clear-contacts">
+                  <Eraser size={15} />
+                  <span className="hidden sm:inline">נקה רשימה</span>
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent dir="rtl">
+                <AlertDialogHeader>
+                  <AlertDialogTitle>נקה את כל אנשי הקשר?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    פעולה זו תמחק את כל {contacts.length} אנשי הקשר. לא ניתן לבטל פעולה זו.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>ביטול</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-destructive hover:bg-destructive/90"
+                    onClick={() => clearAllContacts.mutate()}
+                  >
+                    מחק הכל
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
           {/* Import Excel */}
           <Button variant="outline" size="sm" className="gap-1" onClick={() => fileInputRef.current?.click()} data-testid="button-import-excel">
             <FileSpreadsheet size={15} />
