@@ -68,11 +68,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.post("/api/contacts/bulk", async (req, res) => {
-    const schema = z.array(insertContactSchema);
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
-    const contacts = await storage.bulkCreateContacts(parsed.data);
-    res.status(201).json(contacts);
+    try {
+      const schema = z.array(z.object({ name: z.string(), phone: z.string() }));
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        console.error("Bulk import validation error:", parsed.error.message);
+        return res.status(400).json({ message: parsed.error.message, details: parsed.error.issues });
+      }
+      const contacts = await storage.bulkCreateContacts(parsed.data);
+      res.status(201).json(contacts);
+    } catch (e: any) {
+      console.error("Bulk import error:", e);
+      res.status(500).json({ message: e.message });
+    }
   });
 
   app.patch("/api/contacts/:id", async (req, res) => {
