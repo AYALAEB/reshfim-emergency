@@ -81,7 +81,7 @@ export default function Contacts() {
     },
   });
 
-  // Parse Excel file
+  // Parse Excel file — supports JONI format and generic name/phone format
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -92,51 +92,56 @@ export default function Contacts() {
         const data = new Uint8Array(ev.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: "array" });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows: any[] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
+        // Parse with header row as keys
+        const rowsWithHeaders: any[] = XLSX.utils.sheet_to_json(sheet);
         const parsed: InsertContact[] = [];
 
-        for (const row of rows) {
-          if (!row || row.length < 1) continue;
+        for (const row of rowsWithHeaders) {
+          // Normalize keys to lowercase for comparison
+          const keys = Object.keys(row);
+          const get = (k: string) => {
+            const found = keys.find(key => key.toLowerCase().trim() === k.toLowerCase());
+            return found ? String(row[found] || "").trim() : "";
+          };
 
-          // Try to identify name and phone columns
+          // JONI format: Mobile, Full Name (preferred) or Name
+          const mobile = get("mobile");
+          const fullName = get("full name");
+          const shortName = get("name");
+
+          // Generic format: phone / name / טלפון / שם
+          const genericPhone = get("phone") || get("טלפון") || get("מספר");
+          const genericName = get("name") || get("שם") || get("שם מלא");
+
           let name = "", phone = "";
 
-          // Two-column format: [name, phone] or [phone, name]
-          if (row.length >= 2) {
-            const col0 = String(row[0] || "").trim();
-            const col1 = String(row[1] || "").trim();
+          if (mobile) {
+            // JONI format detected
+            phone = mobile;
+            name = fullName || shortName;
+          } else if (genericPhone || genericName) {
+            phone = genericPhone;
+            name = genericName;
+          } else {
+            // Fallback: try positional (first col name/phone)
+            const vals = Object.values(row).map(v => String(v || "").trim());
+            const col0 = vals[0] || "";
+            const col1 = vals[1] || "";
             const isPhone0 = /^[\d\s\-\+\(\)]{7,}$/.test(col0);
             const isPhone1 = /^[\d\s\-\+\(\)]{7,}$/.test(col1);
-
-            if (!isPhone0 && isPhone1) {
-              name = col0; phone = col1;
-            } else if (isPhone0 && !isPhone1) {
-              name = col1; phone = col0;
-            } else {
-              // Both or neither look like phone — first is name
-              name = col0; phone = col1;
-            }
-          } else if (row.length === 1) {
-            // Single column — try to split "Name - 05X"
-            const raw = String(row[0] || "").trim();
-            const match = raw.match(/^(.+?)\s*[\-–—,]\s*([\d\s\+]{7,})$/) ||
-                          raw.match(/^([\d\s\+]{7,})\s*[\-–—,]\s*(.+)$/);
-            if (match) {
-              const isPhone = /^[\d\s\+]{7,}$/.test(match[1].trim());
-              name = isPhone ? match[2].trim() : match[1].trim();
-              phone = isPhone ? match[1].trim() : match[2].trim();
-            } else {
-              name = raw; phone = "";
-            }
+            if (!isPhone0 && isPhone1) { name = col0; phone = col1; }
+            else if (isPhone0 && !isPhone1) { name = col1; phone = col0; }
+            else { name = col0; phone = col1; }
           }
 
-          // Skip header rows
+          // Skip header-like rows
+          const nameLow = name.toLowerCase();
+          const phoneLow = phone.toLowerCase();
           if (
-            name.toLowerCase().includes("שם") ||
-            name.toLowerCase().includes("name") ||
-            name.toLowerCase().includes("טלפון") ||
-            phone.toLowerCase().includes("phone")
+            nameLow.includes("שם") || nameLow.includes("name") ||
+            nameLow.includes("טלפון") || phoneLow.includes("phone") ||
+            nameLow.includes("mobile")
           ) continue;
 
           if (name.length > 1) {
@@ -177,7 +182,7 @@ export default function Contacts() {
               <AlertDialogTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-1 text-destructive border-destructive/30 hover:bg-destructive/10" data-testid="button-clear-contacts">
                   <Eraser size={15} />
-                  <span className="hidden sm:inline">נקה רשימה</span>
+                  <span>נקה רשימה</span>
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent dir="rtl">
