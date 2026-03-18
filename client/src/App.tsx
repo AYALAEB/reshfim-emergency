@@ -17,6 +17,7 @@ function Router() {
       <Route path="/contacts" component={Contacts} />
       <Route path="/events/:id" component={EventDetail} />
       <Route path="/report/:eventId/:contactId" component={ReportPage} />
+      <Route path="/report/:eventId" component={ReportPage} />
       <Route component={NotFound} />
     </Switch>
   );
