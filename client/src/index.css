@@ -4,72 +4,33 @@
 
 @layer base {
   :root {
-    /* Emergency / civic app palette — authoritative red + neutral slate */
-    --background: 220 20% 97%;
-    --foreground: 220 25% 12%;
-
+    /* Emergency app: crisp white background, strong red alert accent */
+    --background: 0 0% 98%;
+    --foreground: 220 15% 10%;
     --card: 0 0% 100%;
-    --card-foreground: 220 25% 12%;
-
+    --card-foreground: 220 15% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 220 25% 12%;
-
-    --primary: 4 85% 45%;           /* Emergency red */
+    --popover-foreground: 220 15% 10%;
+    --primary: 0 75% 42%;       /* Deep emergency red */
     --primary-foreground: 0 0% 100%;
-
-    --secondary: 220 15% 93%;
-    --secondary-foreground: 220 25% 20%;
-
-    --muted: 220 15% 93%;
-    --muted-foreground: 220 15% 50%;
-
-    --accent: 220 15% 88%;
-    --accent-foreground: 220 25% 15%;
-
-    --destructive: 4 85% 45%;
+    --secondary: 220 14% 93%;
+    --secondary-foreground: 220 15% 20%;
+    --muted: 220 14% 94%;
+    --muted-foreground: 220 10% 46%;
+    --accent: 220 14% 90%;
+    --accent-foreground: 220 15% 15%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-
-    --border: 220 15% 88%;
-    --input: 220 15% 88%;
-    --ring: 4 85% 45%;
-
-    --radius: 0.75rem;
+    --border: 220 13% 87%;
+    --input: 220 13% 87%;
+    --ring: 0 75% 42%;
+    --radius: 0.5rem;
 
     /* Status colors */
-    --status-in: 142 70% 38%;       /* Green — in kibbutz */
-    --status-out: 215 80% 48%;      /* Blue — out kibbutz */
-    --status-help: 4 85% 45%;       /* Red — needs help */
-    --status-pending: 220 15% 65%;  /* Gray — no report */
-  }
-
-  .dark {
-    --background: 220 25% 8%;
-    --foreground: 220 10% 95%;
-
-    --card: 220 25% 11%;
-    --card-foreground: 220 10% 95%;
-
-    --popover: 220 25% 11%;
-    --popover-foreground: 220 10% 95%;
-
-    --primary: 4 85% 55%;
-    --primary-foreground: 0 0% 100%;
-
-    --secondary: 220 20% 18%;
-    --secondary-foreground: 220 10% 90%;
-
-    --muted: 220 20% 18%;
-    --muted-foreground: 220 15% 60%;
-
-    --accent: 220 20% 22%;
-    --accent-foreground: 220 10% 90%;
-
-    --destructive: 4 85% 55%;
-    --destructive-foreground: 0 0% 100%;
-
-    --border: 220 20% 22%;
-    --input: 220 20% 22%;
-    --ring: 4 85% 55%;
+    --safe-in: 142 71% 45%;
+    --safe-out: 214 89% 52%;
+    --need-help: 0 84% 60%;
+    --no-report: 220 10% 65%;
   }
 }
 
@@ -79,43 +40,43 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: 'Assistant', 'Heebo', system-ui, sans-serif;
+    font-family: 'Segoe UI', 'Arial', sans-serif;
     direction: rtl;
   }
 }
 
-/* Status badge colors */
-.status-in {
-  background-color: hsl(var(--status-in));
-  color: white;
-}
-.status-out {
-  background-color: hsl(var(--status-out));
-  color: white;
-}
-.status-help {
-  background-color: hsl(var(--status-help));
-  color: white;
-}
-.status-pending {
-  background-color: hsl(var(--status-pending));
-  color: white;
+/* RTL overrides */
+.sidebar-nav a {
+  direction: rtl;
 }
 
-/* Mobile bottom nav */
-.mobile-nav {
-  @apply fixed bottom-0 left-0 right-0 bg-card border-t border-border z-50 flex md:hidden;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+/* Status badges */
+.status-safe-in {
+  background: hsl(142 71% 45% / 0.15);
+  color: hsl(142 71% 32%);
+  border: 1px solid hsl(142 71% 45% / 0.3);
+}
+.status-safe-out {
+  background: hsl(214 89% 52% / 0.15);
+  color: hsl(214 89% 38%);
+  border: 1px solid hsl(214 89% 52% / 0.3);
+}
+.status-need-help {
+  background: hsl(0 84% 60% / 0.15);
+  color: hsl(0 84% 45%);
+  border: 1px solid hsl(0 84% 60% / 0.3);
+}
+.status-no-report {
+  background: hsl(220 10% 65% / 0.12);
+  color: hsl(220 10% 40%);
+  border: 1px solid hsl(220 10% 65% / 0.3);
 }
 
-/* Touch target minimum 44px */
-.touch-target {
-  min-height: 44px;
-  min-width: 44px;
+/* Alert pulse for help needed */
+@keyframes pulse-red {
+  0%, 100% { box-shadow: 0 0 0 0 hsl(0 84% 60% / 0.4); }
+  50% { box-shadow: 0 0 0 8px hsl(0 84% 60% / 0); }
 }
-
-/* Report button — big on mobile */
-.report-btn {
-  @apply w-full py-5 text-lg font-semibold rounded-2xl flex items-center justify-center gap-3;
-  min-height: 72px;
+.help-pulse {
+  animation: pulse-red 2s ease-in-out infinite;
 }

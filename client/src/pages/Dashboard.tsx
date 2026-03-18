@@ -1,47 +1,42 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { type Event } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AlertTriangle, Plus, ChevronLeft, Trash2, CheckCircle2, Clock } from "lucide-react";
-import type { Event } from "@shared/schema";
-
-function formatDate(dateStr: string) {
-  const d = new Date(dateStr);
-  return d.toLocaleString("he-IL", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-}
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
+import { AlertTriangle, Plus, Users, ChevronLeft, Trash2, Eye } from "lucide-react";
 
 export default function Dashboard() {
   const { toast } = useToast();
-  const [newEventName, setNewEventName] = useState("");
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [eventName, setEventName] = useState("");
 
   const { data: events = [], isLoading } = useQuery<Event[]>({
     queryKey: ["/api/events"],
   });
 
-  const createEvent = useMutation({
+  const createEventMutation = useMutation({
     mutationFn: (name: string) =>
       apiRequest("POST", "/api/events", {
         name,
-        createdAt: new Date().toISOString(),
+        createdAt: new Date().toLocaleString("he-IL"),
         isActive: true,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
-      setNewEventName("");
-      setDialogOpen(false);
-      toast({ title: "אירוע נוצר בהצלחה" });
+      setOpen(false);
+      setEventName("");
+      toast({ title: "אירוע נוצר", description: "האירוע החדש נוצר בהצלחה" });
     },
   });
 
-  const deleteEvent = useMutation({
+  const deleteEventMutation = useMutation({
     mutationFn: (id: number) => apiRequest("DELETE", `/api/events/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
@@ -49,189 +44,177 @@ export default function Dashboard() {
     },
   });
 
-  const toggleActive = useMutation({
-    mutationFn: ({ id, isActive }: { id: number; isActive: boolean }) =>
-      apiRequest("PATCH", `/api/events/${id}`, { isActive }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/events"] }),
-  });
-
-  // normalize: handle both isActive and active (DB might return either)
-  function parseActive(e: any): boolean {
-    const val = e.isActive ?? e.active ?? e.is_active;
-    if (val === true || val === "true") return true;
-    if (val === false || val === "false") return false;
-    return true; // default new events to active
-  }
-  const normalizedEvents = events.map((e: any) => ({
-    ...e,
-    isActive: parseActive(e),
-    createdAt: e.createdAt ?? e.created_at ?? "",
-  }));
-  const activeEvents = normalizedEvents.filter(e => e.isActive === true);
-  const pastEvents = normalizedEvents.filter(e => e.isActive === false);
+  const handleCreate = () => {
+    if (!eventName.trim()) return;
+    createEventMutation.mutate(eventName.trim());
+  };
 
   return (
-    <div className="space-y-6">
-      {/* Hero + new event */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-bold">אירועי חירום</h2>
-          <p className="text-sm text-muted-foreground">ניהול נוכחות בזמן אמת</p>
+    <div className="min-h-screen bg-background" dir="rtl">
+      {/* Header */}
+      <header className="bg-primary text-primary-foreground px-4 py-4 shadow-md">
+        <div className="max-w-2xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="h-6 w-6" />
+            <div>
+              <h1 className="text-xl font-bold leading-tight">מערכת נוכחות חירום</h1>
+              <p className="text-primary-foreground/80 text-xs">קיבוץ רשפים – צח״י</p>
+            </div>
+          </div>
+          <Link href="/contacts">
+            <Button variant="secondary" size="sm" className="gap-1 text-sm">
+              <Users className="h-4 w-4" />
+              אנשי קשר
+            </Button>
+          </Link>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      </header>
+
+      <main className="max-w-2xl mx-auto px-4 py-6 space-y-4">
+        {/* Create event button */}
+        <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button data-testid="button-new-event" className="gap-2">
-              <Plus size={16} />
-              אירוע חדש
+            <Button className="w-full gap-2 h-12 text-base" data-testid="button-new-event">
+              <Plus className="h-5 w-5" />
+              אירוע חדש +
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-sm mx-4" dir="rtl">
+          <DialogContent dir="rtl" className="max-w-sm">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <AlertTriangle size={20} className="text-primary" />
-                אירוע חדש
-              </DialogTitle>
+              <DialogTitle>יצירת אירוע חירום</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-2">
-              <div className="space-y-2">
+              <div>
                 <Label htmlFor="event-name">שם האירוע</Label>
                 <Input
                   id="event-name"
                   data-testid="input-event-name"
-                  placeholder='למשל: "אזעקה 16.3.2026"'
-                  value={newEventName}
-                  onChange={e => setNewEventName(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && newEventName.trim() && createEvent.mutate(newEventName.trim())}
+                  placeholder='למשל: "אזעקה – שבת צהריים"'
+                  value={eventName}
+                  onChange={e => setEventName(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && handleCreate()}
                   autoFocus
+                  className="mt-1"
                 />
               </div>
               <Button
-                data-testid="button-create-event"
                 className="w-full"
-                disabled={!newEventName.trim() || createEvent.isPending}
-                onClick={() => createEvent.mutate(newEventName.trim())}
+                onClick={handleCreate}
+                disabled={!eventName.trim() || createEventMutation.isPending}
+                data-testid="button-create-event"
               >
-                {createEvent.isPending ? "יוצר..." : "צור אירוע ושלח הודעות"}
+                {createEventMutation.isPending ? "יוצר..." : "צור אירוע"}
               </Button>
             </div>
           </DialogContent>
         </Dialog>
-      </div>
 
-      {/* Active events */}
-      {activeEvents.length > 0 && (
-        <section className="space-y-3">
-          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-primary animate-pulse inline-block" />
-            פעיל עכשיו
-          </h3>
-          {activeEvents.map(event => (
-            <EventCard
-              key={event.id}
-              event={event}
-              onDelete={() => deleteEvent.mutate(event.id)}
-              onToggle={() => toggleActive.mutate({ id: event.id, isActive: false })}
-            />
-          ))}
-        </section>
-      )}
-
-      {/* Empty state */}
-      {activeEvents.length === 0 && (
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center justify-center py-12 gap-3">
-            <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
-              <AlertTriangle size={24} className="text-muted-foreground" />
-            </div>
-            <p className="text-sm text-muted-foreground text-center">אין אירועים פעילים כרגע</p>
-            <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
-              <Plus size={14} className="ml-1" /> פתח אירוע חדש
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Past events */}
-      {pastEvents.length > 0 && (
-        <section className="space-y-3">
-          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
-            <Clock size={14} />
-            היסטוריה
-          </h3>
-          {pastEvents.map(event => (
-            <EventCard
-              key={event.id}
-              event={event}
-              onDelete={() => deleteEvent.mutate(event.id)}
-              onToggle={() => toggleActive.mutate({ id: event.id, isActive: true })}
-              past
-            />
-          ))}
-        </section>
-      )}
+        {/* Events list */}
+        {isLoading ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="h-24 rounded-lg bg-muted animate-pulse" />
+            ))}
+          </div>
+        ) : events.length === 0 ? (
+          <Card className="text-center py-12">
+            <CardContent>
+              <AlertTriangle className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-40" />
+              <p className="text-muted-foreground">אין אירועים פעילים</p>
+              <p className="text-sm text-muted-foreground/70 mt-1">לחץ "אירוע חדש +" ליצירת אירוע</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-3">
+            {events.map(event => (
+              <EventCard
+                key={event.id}
+                event={event}
+                onDelete={() => deleteEventMutation.mutate(event.id)}
+              />
+            ))}
+          </div>
+        )}
+      </main>
     </div>
   );
 }
 
-function EventCard({
-  event,
-  onDelete,
-  onToggle,
-  past,
-}: {
-  event: Event;
-  onDelete: () => void;
-  onToggle: () => void;
-  past?: boolean;
-}) {
+function EventCard({ event, onDelete }: { event: Event; onDelete: () => void }) {
+  const { data: reports = [] } = useQuery({
+    queryKey: ["/api/events", event.id, "reports"],
+    queryFn: () => apiRequest("GET", `/api/events/${event.id}/reports`),
+    refetchInterval: 5000, // auto-refresh every 5 seconds
+  });
+
+  const { data: contacts = [] } = useQuery({
+    queryKey: ["/api/contacts"],
+  });
+
+  const safeIn = reports.filter((r: any) => r.status === "safe_in").length;
+  const safeOut = reports.filter((r: any) => r.status === "safe_out").length;
+  const needHelp = reports.filter((r: any) => r.status === "need_help").length;
+  const total = Array.isArray(contacts) ? contacts.length : 0;
+  const notReported = total - reports.length;
+
   return (
-    <Card className={`transition-all ${past ? "opacity-70" : "border-primary/30 shadow-sm"}`} data-testid={`card-event-${event.id}`}>
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-semibold truncate">{event.name}</span>
-              {!past && (
-                <Badge className="status-in text-xs shrink-0">פעיל</Badge>
-              )}
-              {past && (
-                <Badge variant="secondary" className="text-xs shrink-0">הסתיים</Badge>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {formatDate(event.createdAt)}
-            </p>
+    <Card
+      className={`border-2 transition-all ${needHelp > 0 ? "border-destructive help-pulse" : "border-border"}`}
+      data-testid={`card-event-${event.id}`}
+    >
+      <CardHeader className="pb-2 pt-4 px-4">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <CardTitle className="text-base font-semibold">{event.name}</CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">{event.createdAt}</p>
           </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-destructive"
-              onClick={e => { e.preventDefault(); onDelete(); }}
-              data-testid={`button-delete-event-${event.id}`}
-            >
-              <Trash2 size={15} />
-            </Button>
-            <Link href={`/events/${event.id}`}>
-              <Button variant="ghost" size="icon" className="h-8 w-8" data-testid={`button-open-event-${event.id}`}>
-                <ChevronLeft size={18} />
-              </Button>
-            </Link>
+          <div className="flex items-center gap-1">
+            {needHelp > 0 && (
+              <Badge variant="destructive" className="text-xs gap-1">
+                <AlertTriangle className="h-3 w-3" />
+                {needHelp} זקוקים לעזרה!
+              </Badge>
+            )}
           </div>
         </div>
-        <div className="mt-3 flex gap-2">
+      </CardHeader>
+      <CardContent className="px-4 pb-4 space-y-3">
+        {/* Stats row */}
+        <div className="grid grid-cols-4 gap-2 text-center">
+          <div className="rounded-md p-2 status-safe-in">
+            <div className="text-lg font-bold">{safeIn}</div>
+            <div className="text-[10px] leading-tight">בקיבוץ</div>
+          </div>
+          <div className="rounded-md p-2 status-safe-out">
+            <div className="text-lg font-bold">{safeOut}</div>
+            <div className="text-[10px] leading-tight">מחוץ</div>
+          </div>
+          <div className="rounded-md p-2 status-need-help">
+            <div className="text-lg font-bold">{needHelp}</div>
+            <div className="text-[10px] leading-tight">עזרה</div>
+          </div>
+          <div className="rounded-md p-2 status-no-report">
+            <div className="text-lg font-bold">{notReported}</div>
+            <div className="text-[10px] leading-tight">לא דיווחו</div>
+          </div>
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex gap-2">
           <Link href={`/events/${event.id}`} className="flex-1">
-            <Button variant={past ? "outline" : "default"} size="sm" className="w-full" data-testid={`button-view-event-${event.id}`}>
-              {past ? "צפה בדוח" : "ניהול אירוע"}
+            <Button variant="secondary" size="sm" className="w-full gap-1">
+              <Eye className="h-3.5 w-3.5" />
+              פרטים ושליחה
             </Button>
           </Link>
           <Button
             variant="outline"
             size="sm"
-            onClick={onToggle}
-            data-testid={`button-toggle-event-${event.id}`}
+            className="text-destructive hover:bg-destructive hover:text-white border-destructive/40"
+            onClick={onDelete}
+            data-testid={`button-delete-event-${event.id}`}
           >
-            {past ? "הפעל מחדש" : "סיים אירוע"}
+            <Trash2 className="h-3.5 w-3.5" />
           </Button>
         </div>
       </CardContent>

@@ -1,103 +1,75 @@
-import { useState } from "react";
 import { useParams } from "wouter";
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import type { Event, Contact } from "@shared/schema";
-import { CheckCircle, MapPin, HelpCircle, AlertTriangle } from "lucide-react";
-
-type Status = "in_kibbutz" | "out_kibbutz" | "need_help";
+import { AlertTriangle, CheckCircle2, MapPin, LogOut, HelpCircle } from "lucide-react";
 
 export default function ReportPage() {
   const { eventId, contactId } = useParams<{ eventId: string; contactId: string }>();
-  const evId = parseInt(eventId);
-  const ctId = parseInt(contactId);
-
-  const [selected, setSelected] = useState<Status | null>(null);
-  const [details, setDetails] = useState("");
+  const [status, setStatus] = useState<"safe_in" | "safe_out" | "need_help" | null>(null);
+  const [notes, setNotes] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
-  // Load event details
-  const { data: event, isLoading: eventLoading } = useQuery<Event>({
-    queryKey: ["/api/events", evId],
-    queryFn: () => apiRequest("GET", `/api/events/${evId}`).then(r => r.json()),
-    enabled: !isNaN(evId),
+  const { data: info, isLoading } = useQuery<{ event: any; contact: any }>({
+    queryKey: ["/api/report-info", eventId, contactId],
+    queryFn: () => apiRequest("GET", `/api/report-info/${eventId}/${contactId}`),
   });
 
-  // Load contact — this is how we auto-fill name and phone
-  const { data: contact, isLoading: contactLoading } = useQuery<Contact>({
-    queryKey: ["/api/contacts", ctId],
-    queryFn: () => apiRequest("GET", `/api/contacts/${ctId}`).then(r => r.json()),
-    enabled: !isNaN(ctId),
-  });
-
-  const reportMutation = useMutation({
-    mutationFn: () => {
-      const now = new Date();
-      const reportedAt = now.toLocaleString("he-IL", {
-        day: "2-digit", month: "2-digit", year: "numeric",
-        hour: "2-digit", minute: "2-digit",
-      });
-      return apiRequest("POST", `/api/events/${evId}/reports`, {
-        eventId: evId,
-        contactId: ctId,
-        contactName: contact!.name,
-        contactPhone: contact!.phone,
-        status: selected!,
-        details: details.trim() || null,
-        reportedAt,
-      });
+  const submitMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", "/api/reports", {
+        eventId: Number(eventId),
+        contactId: Number(contactId),
+        name: info?.contact?.name ?? "",
+        phone: info?.contact?.phone ?? "",
+        status,
+        notes: notes.trim() || null,
+        reportedAt: new Date().toLocaleString("he-IL"),
+      }),
+    onSuccess: () => {
+      setSubmitted(true);
     },
-    onSuccess: () => setSubmitted(true),
   });
-
-  const isLoading = eventLoading || contactLoading;
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-red-700 flex items-center justify-center">
-        <div className="text-white text-center">
-          <div className="w-10 h-10 border-4 border-white/30 border-t-white rounded-full animate-spin mx-auto mb-3" />
-          <p>טוען...</p>
+      <div className="min-h-screen flex items-center justify-center" dir="rtl">
+        <div className="text-center space-y-3">
+          <div className="h-8 w-48 bg-muted rounded animate-pulse mx-auto" />
+          <div className="h-4 w-32 bg-muted rounded animate-pulse mx-auto" />
         </div>
       </div>
     );
   }
 
-  if (!event || !contact) {
+  if (!info) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center" dir="rtl">
-        <div className="text-center p-8">
-          <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto mb-3" />
-          <h1 className="text-xl font-bold mb-2">קישור לא תקין</h1>
-          <p className="text-muted-foreground">לא ניתן למצוא את האירוע או איש הקשר</p>
+      <div className="min-h-screen flex items-center justify-center" dir="rtl">
+        <div className="text-center">
+          <AlertTriangle className="h-10 w-10 text-destructive mx-auto mb-3" />
+          <p className="text-muted-foreground">קישור לא תקין</p>
         </div>
       </div>
     );
   }
 
   if (submitted) {
+    const messages: Record<string, { icon: any; text: string; color: string }> = {
+      safe_in: { icon: CheckCircle2, text: "הדיווח התקבל – בקיבוץ ובסדר", color: "text-green-600" },
+      safe_out: { icon: LogOut, text: "הדיווח התקבל – מחוץ לקיבוץ ובסדר", color: "text-blue-600" },
+      need_help: { icon: HelpCircle, text: "הדיווח התקבל – צוות החירום יצור קשר", color: "text-red-600" },
+    };
+    const m = messages[status!];
+    const Icon = m.icon;
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6" dir="rtl">
-        <div className="text-center max-w-sm">
-          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <CheckCircle className="w-10 h-10 text-green-600" />
-          </div>
-          <h1 className="text-2xl font-bold mb-2">הדיווח התקבל!</h1>
-          <p className="text-muted-foreground mb-1">תודה, {contact.name}</p>
-          <p className="text-sm text-muted-foreground">
-            {selected === "in_kibbutz" && "דיווחת: אני בקיבוץ והכל בסדר"}
-            {selected === "out_kibbutz" && "דיווחת: אני לא בקיבוץ והכל בסדר"}
-            {selected === "need_help" && "דיווחת: זקוק/ה לעזרה — צח\"י יצרו קשר בהקדם"}
-          </p>
-          {selected === "need_help" && (
-            <div className="mt-4 p-3 bg-red-50 rounded-lg border border-red-200">
-              <p className="text-red-700 text-sm font-medium">
-                צוות חירום רשפים קיבל את דיווחך ויצור קשר בהקדם האפשרי
-              </p>
-            </div>
-          )}
+      <div className="min-h-screen flex items-center justify-center px-4 bg-background" dir="rtl">
+        <div className="text-center max-w-xs">
+          <Icon className={`h-16 w-16 ${m.color} mx-auto mb-4`} />
+          <h2 className="text-xl font-bold mb-2">תודה, {info.contact.name}!</h2>
+          <p className={`font-medium ${m.color}`}>{m.text}</p>
+          <p className="text-sm text-muted-foreground mt-3">צח״י רשפים קיבל את הדיווח שלך</p>
         </div>
       </div>
     );
@@ -106,122 +78,115 @@ export default function ReportPage() {
   return (
     <div className="min-h-screen bg-background" dir="rtl">
       {/* Header */}
-      <div className="bg-red-700 text-white px-4 py-5">
-        <div className="max-w-sm mx-auto">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-3 h-3 bg-white rounded-full animate-pulse" />
-            <span className="text-sm font-medium text-red-200 uppercase tracking-wide">דיווח חירום</span>
-          </div>
-          <h1 className="text-2xl font-bold mb-1">🔴 {event.name}</h1>
-          <p className="text-red-200 text-sm">{event.createdAt}</p>
-        </div>
+      <div className="bg-primary text-primary-foreground px-4 py-5 text-center">
+        <AlertTriangle className="h-8 w-8 mx-auto mb-2" />
+        <h1 className="text-xl font-bold">אירוע חירום</h1>
+        <p className="text-primary-foreground/80 text-sm mt-0.5">{info.event.name}</p>
       </div>
 
-      <main className="max-w-sm mx-auto px-4 py-6">
-        {/* Auto-filled identity — shown read-only */}
-        <div className="bg-muted/50 border rounded-lg px-4 py-3 mb-6">
-          <p className="text-xs text-muted-foreground mb-1">מדווח/ת</p>
-          <p className="font-bold text-base">{contact.name}</p>
-          <p className="text-sm text-muted-foreground" dir="ltr">{contact.phone}</p>
+      <div className="max-w-sm mx-auto px-4 py-6 space-y-6">
+        {/* Auto-filled info */}
+        <div className="bg-muted/50 rounded-lg px-4 py-3 border border-border">
+          <div className="text-xs text-muted-foreground">שם</div>
+          <div className="font-semibold">{info.contact.name}</div>
+          {info.contact.phone && (
+            <>
+              <div className="text-xs text-muted-foreground mt-2">טלפון</div>
+              <div className="font-medium text-sm">{info.contact.phone}</div>
+            </>
+          )}
         </div>
-
-        <p className="text-base font-semibold mb-4 text-center">מה מצבך?</p>
 
         {/* Status buttons */}
-        <div className="space-y-3 mb-6">
-          <StatusButton
-            status="in_kibbutz"
-            selected={selected}
-            onClick={() => setSelected("in_kibbutz")}
-            icon={<CheckCircle className="w-6 h-6" />}
-            label="אני בקיבוץ והכל בסדר"
-            color="green"
-          />
-          <StatusButton
-            status="out_kibbutz"
-            selected={selected}
-            onClick={() => setSelected("out_kibbutz")}
-            icon={<MapPin className="w-6 h-6" />}
-            label="אני לא בקיבוץ והכל בסדר"
-            color="blue"
-          />
-          <StatusButton
-            status="need_help"
-            selected={selected}
-            onClick={() => setSelected("need_help")}
-            icon={<HelpCircle className="w-6 h-6" />}
-            label="אני זקוק/ה לעזרה"
-            color="red"
-          />
+        <div className="space-y-3">
+          <p className="font-semibold text-center text-sm">מה המצב שלך?</p>
+
+          <button
+            onClick={() => setStatus("safe_in")}
+            className={`w-full rounded-xl p-4 border-2 transition-all text-right ${
+              status === "safe_in"
+                ? "border-green-600 bg-green-50"
+                : "border-border hover:border-green-400 bg-background"
+            }`}
+            data-testid="button-safe-in"
+          >
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl shrink-0 ${status === "safe_in" ? "bg-green-600 text-white" : "bg-green-100"}`}>
+                ✅
+              </div>
+              <div>
+                <div className="font-bold text-green-800">אני בקיבוץ והכל בסדר</div>
+                <div className="text-xs text-muted-foreground">נמצא בקיבוץ, אין צורך בסיוע</div>
+              </div>
+            </div>
+          </button>
+
+          <button
+            onClick={() => setStatus("safe_out")}
+            className={`w-full rounded-xl p-4 border-2 transition-all text-right ${
+              status === "safe_out"
+                ? "border-blue-600 bg-blue-50"
+                : "border-border hover:border-blue-400 bg-background"
+            }`}
+            data-testid="button-safe-out"
+          >
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl shrink-0 ${status === "safe_out" ? "bg-blue-600 text-white" : "bg-blue-100"}`}>
+                🔵
+              </div>
+              <div>
+                <div className="font-bold text-blue-800">אני לא בקיבוץ והכל בסדר</div>
+                <div className="text-xs text-muted-foreground">נמצא מחוץ לקיבוץ, בסדר</div>
+              </div>
+            </div>
+          </button>
+
+          <button
+            onClick={() => setStatus("need_help")}
+            className={`w-full rounded-xl p-4 border-2 transition-all text-right ${
+              status === "need_help"
+                ? "border-red-600 bg-red-50"
+                : "border-border hover:border-red-400 bg-background"
+            }`}
+            data-testid="button-need-help"
+          >
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl shrink-0 ${status === "need_help" ? "bg-red-600 text-white" : "bg-red-100"}`}>
+                🆘
+              </div>
+              <div>
+                <div className="font-bold text-red-800">אני זקוק/ה לעזרה</div>
+                <div className="text-xs text-muted-foreground">קשר דחוף עם צוות החירום</div>
+              </div>
+            </div>
+          </button>
         </div>
 
-        {/* Details for need_help */}
-        {selected === "need_help" && (
-          <div className="mb-4 space-y-2">
-            <label className="text-sm font-medium">פרט את הבעיה (אופציונלי)</label>
+        {/* Notes for help request */}
+        {status === "need_help" && (
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">פרטים נוספים (אופציונלי)</label>
             <Textarea
-              placeholder="תאר את המצב..."
-              value={details}
-              onChange={e => setDetails(e.target.value)}
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="תאר את המצב – מיקום, סוג הסיוע הנדרש..."
               rows={3}
-              className="resize-none"
-              data-testid="input-details"
+              className="text-sm"
+              data-testid="textarea-notes"
             />
           </div>
         )}
 
+        {/* Submit */}
         <Button
-          onClick={() => reportMutation.mutate()}
-          disabled={!selected || reportMutation.isPending}
-          className="w-full h-12 text-base font-semibold bg-red-700 hover:bg-red-800"
-          data-testid="btn-submit-report"
+          className="w-full h-12 text-base"
+          onClick={() => submitMutation.mutate()}
+          disabled={!status || submitMutation.isPending}
+          data-testid="button-submit-report"
         >
-          {reportMutation.isPending ? "שולח..." : "שלח דיווח"}
+          {submitMutation.isPending ? "שולח..." : "שלח דיווח"}
         </Button>
-      </main>
-
-      <footer className="text-center py-6 text-xs text-muted-foreground">
-        <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a>
-      </footer>
+      </div>
     </div>
-  );
-}
-
-function StatusButton({
-  status, selected, onClick, icon, label, color
-}: {
-  status: Status;
-  selected: Status | null;
-  onClick: () => void;
-  icon: React.ReactNode;
-  label: string;
-  color: "green" | "blue" | "red";
-}) {
-  const isSelected = selected === status;
-  const colors = {
-    green: {
-      base: "border-2 border-green-200 bg-green-50 hover:bg-green-100 text-green-800",
-      active: "border-2 border-green-500 bg-green-100 text-green-800 shadow-md",
-    },
-    blue: {
-      base: "border-2 border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-800",
-      active: "border-2 border-blue-500 bg-blue-100 text-blue-800 shadow-md",
-    },
-    red: {
-      base: "border-2 border-red-200 bg-red-50 hover:bg-red-100 text-red-800",
-      active: "border-2 border-red-500 bg-red-100 text-red-800 shadow-md",
-    },
-  };
-
-  return (
-    <button
-      onClick={onClick}
-      className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl transition-all text-right ${isSelected ? colors[color].active : colors[color].base}`}
-      data-testid={`btn-status-${status}`}
-    >
-      <div className="shrink-0">{icon}</div>
-      <span className="text-base font-medium">{label}</span>
-      {isSelected && <CheckCircle className="w-5 h-5 mr-auto shrink-0 fill-current opacity-70" />}
-    </button>
   );
 }

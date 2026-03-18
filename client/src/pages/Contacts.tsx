@@ -1,61 +1,56 @@
 import { useState, useRef } from "react";
+import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { type Contact } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger
-} from "@/components/ui/dialog";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel,
-  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
-  AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger
-} from "@/components/ui/alert-dialog";
-import { Plus, Trash2, Upload, FileSpreadsheet, Search, Edit2, Check, X, Users, Eraser } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
+import { ArrowRight, Plus, Trash2, Edit2, Users, Upload, X, Check } from "lucide-react";
 import * as XLSX from "xlsx";
-import type { Contact, InsertContact } from "@shared/schema";
 
 export default function Contacts() {
   const { toast } = useToast();
+  const [addOpen, setAddOpen] = useState(false);
+  const [editContact, setEditContact] = useState<Contact | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [importDialogOpen, setImportDialogOpen] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newPhone, setNewPhone] = useState("");
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editName, setEditName] = useState("");
-  const [editPhone, setEditPhone] = useState("");
-  const [importPreview, setImportPreview] = useState<InsertContact[]>([]);
+  const [importText, setImportText] = useState("");
+  const [parsedContacts, setParsedContacts] = useState<{ name: string; phone: string }[]>([]);
 
   const { data: contacts = [], isLoading } = useQuery<Contact[]>({
     queryKey: ["/api/contacts"],
   });
 
-  const addContact = useMutation({
-    mutationFn: (data: InsertContact) => apiRequest("POST", "/api/contacts", data),
+  const addMutation = useMutation({
+    mutationFn: (data: { name: string; phone: string }) =>
+      apiRequest("POST", "/api/contacts", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
-      setNewName(""); setNewPhone(""); setAddDialogOpen(false);
+      setAddOpen(false);
+      setName("");
+      setPhone("");
       toast({ title: "איש קשר נוסף" });
     },
   });
 
-  const updateContact = useMutation({
-    mutationFn: ({ id, name, phone }: { id: number; name: string; phone: string }) =>
-      apiRequest("PATCH", `/api/contacts/${id}`, { name, phone }),
+  const editMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: { name: string; phone: string } }) =>
+      apiRequest("PATCH", `/api/contacts/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
-      setEditingId(null);
-      toast({ title: "איש קשר עודכן" });
+      setEditContact(null);
+      toast({ title: "פרטים עודכנו" });
     },
   });
 
-  const deleteContact = useMutation({
+  const deleteMutation = useMutation({
     mutationFn: (id: number) => apiRequest("DELETE", `/api/contacts/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
@@ -63,362 +58,245 @@ export default function Contacts() {
     },
   });
 
-  const clearAllContacts = useMutation({
-    mutationFn: () => apiRequest("DELETE", `/api/contacts`),
-    onSuccess: () => {
+  const bulkMutation = useMutation({
+    mutationFn: (contacts: { name: string; phone: string }[]) =>
+      apiRequest("POST", "/api/contacts/bulk", contacts),
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
-      toast({ title: "רשימת אנשי הקשר נוקתה" });
+      setImportOpen(false);
+      setImportText("");
+      setParsedContacts([]);
+      toast({ title: `יובאו ${Array.isArray(data) ? data.length : 0} אנשי קשר` });
     },
   });
 
-  const bulkImport = useMutation({
-    mutationFn: (contacts: InsertContact[]) => apiRequest("POST", "/api/contacts/bulk", contacts),
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
-      setImportPreview([]);
-      setImportDialogOpen(false);
-      toast({ title: `יובאו ${importPreview.length} אנשי קשר` });
-    },
-  });
-
-  // Parse Excel file — supports JONI format and generic name/phone format
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const data = new Uint8Array(ev.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: "array" });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-
-        // Parse with header row as keys
-        const rowsWithHeaders: any[] = XLSX.utils.sheet_to_json(sheet);
-        const parsed: InsertContact[] = [];
-
-        for (const row of rowsWithHeaders) {
-          // Normalize keys to lowercase for comparison
-          const keys = Object.keys(row);
-          const get = (k: string) => {
-            const found = keys.find(key => key.toLowerCase().trim() === k.toLowerCase());
-            return found ? String(row[found] || "").trim() : "";
-          };
-
-          // JONI format: Mobile, Full Name (preferred) or Name
-          const mobile = get("mobile");
-          const fullName = get("full name");
-          const shortName = get("name");
-
-          // Generic format: phone / name / טלפון / שם
-          const genericPhone = get("phone") || get("טלפון") || get("מספר");
-          const genericName = get("name") || get("שם") || get("שם מלא");
-
-          let name = "", phone = "";
-
-          if (mobile) {
-            // JONI format detected
-            phone = mobile;
-            name = fullName || shortName;
-          } else if (genericPhone || genericName) {
-            phone = genericPhone;
-            name = genericName;
-          } else {
-            // Fallback: try positional (first col name/phone)
-            const vals = Object.values(row).map(v => String(v || "").trim());
-            const col0 = vals[0] || "";
-            const col1 = vals[1] || "";
-            const isPhone0 = /^[\d\s\-\+\(\)]{7,}$/.test(col0);
-            const isPhone1 = /^[\d\s\-\+\(\)]{7,}$/.test(col1);
-            if (!isPhone0 && isPhone1) { name = col0; phone = col1; }
-            else if (isPhone0 && !isPhone1) { name = col1; phone = col0; }
-            else { name = col0; phone = col1; }
-          }
-
-          // Skip header-like rows
-          const nameLow = name.toLowerCase();
-          const phoneLow = phone.toLowerCase();
-          if (
-            nameLow.includes("שם") || nameLow.includes("name") ||
-            nameLow.includes("טלפון") || phoneLow.includes("phone") ||
-            nameLow.includes("mobile")
-          ) continue;
-
-          if (name.length > 1) {
-            parsed.push({ name: name.trim(), phone: phone.trim() });
-          }
+  // Parse pasted text or CSV
+  const parseText = (text: string) => {
+    const lines = text.split("\n").filter(l => l.trim());
+    const parsed: { name: string; phone: string }[] = [];
+    for (const line of lines) {
+      // Try tab, comma, dash
+      const parts = line.split(/\t|,|–|-/).map(s => s.trim()).filter(Boolean);
+      if (parts.length >= 2) {
+        // Detect which is phone (contains digits)
+        const phoneIdx = parts.findIndex(p => /\d{7,}/.test(p));
+        const nameIdx = phoneIdx === 0 ? 1 : 0;
+        if (phoneIdx >= 0) {
+          parsed.push({ name: parts[nameIdx], phone: parts[phoneIdx] });
         }
-
-        setImportPreview(parsed);
-        setImportDialogOpen(true);
-      } catch (err) {
-        toast({ title: "שגיאה בקריאת הקובץ", description: "ודא שהקובץ הוא Excel או CSV תקין", variant: "destructive" });
+      } else if (parts.length === 1 && /\d{7,}/.test(parts[0])) {
+        // phone only
+        parsed.push({ name: parts[0], phone: parts[0] });
       }
-    };
-    reader.readAsArrayBuffer(file);
-    // Reset input
-    e.target.value = "";
+    }
+    setParsedContacts(parsed);
   };
 
-  const filtered = contacts.filter(c =>
-    c.name.includes(searchTerm) || c.phone.includes(searchTerm)
-  );
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const data = ev.target?.result;
+        const workbook = XLSX.read(data, { type: "binary" });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+        const parsed: { name: string; phone: string }[] = [];
+        for (const row of rows) {
+          if (!row || row.length < 2) continue;
+          const [a, b] = row.map(String);
+          if (!a || !b) continue;
+          // Skip header rows
+          if (/שם|name/i.test(a) || /טל|phone/i.test(b)) continue;
+          const phoneCandidate = /\d{7,}/.test(b) ? b : (/\d{7,}/.test(a) ? a : null);
+          const nameCandidate = phoneCandidate === b ? a : b;
+          if (phoneCandidate) {
+            parsed.push({ name: nameCandidate.trim(), phone: phoneCandidate.trim() });
+          }
+        }
+        setParsedContacts(parsed);
+        if (parsed.length > 0) setImportOpen(true);
+      } catch {
+        toast({ title: "שגיאה בקריאת הקובץ", variant: "destructive" });
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const openEdit = (c: Contact) => {
+    setEditContact(c);
+    setName(c.name);
+    setPhone(c.phone);
+  };
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-bold flex items-center gap-2">
-            <Users size={20} />
-            אנשי קשר
-          </h2>
-          <p className="text-sm text-muted-foreground">{contacts.length} איש קשר</p>
+    <div className="min-h-screen bg-background" dir="rtl">
+      <header className="bg-primary text-primary-foreground px-4 py-4 shadow-md">
+        <div className="max-w-2xl mx-auto flex items-center gap-3">
+          <Link href="/">
+            <Button variant="ghost" size="sm" className="text-primary-foreground hover:bg-primary-foreground/10 gap-1 px-2">
+              <ArrowRight className="h-4 w-4" />
+              חזרה
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-lg font-bold">אנשי קשר</h1>
+            <p className="text-primary-foreground/75 text-xs">{contacts.length} אנשי קשר ברשימה</p>
+          </div>
         </div>
+      </header>
+
+      <main className="max-w-2xl mx-auto px-4 py-4 space-y-3">
+        {/* Action buttons */}
         <div className="flex gap-2">
-          {/* Clear all */}
-          {contacts.length > 0 && (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-1 text-destructive border-destructive/30 hover:bg-destructive/10" data-testid="button-clear-contacts">
-                  <Eraser size={15} />
-                  <span>נקה רשימה</span>
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent dir="rtl">
-                <AlertDialogHeader>
-                  <AlertDialogTitle>נקה את כל אנשי הקשר?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    פעולה זו תמחק את כל {contacts.length} אנשי הקשר. לא ניתן לבטל פעולה זו.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>ביטול</AlertDialogCancel>
-                  <AlertDialogAction
-                    className="bg-destructive hover:bg-destructive/90"
-                    onClick={() => clearAllContacts.mutate()}
-                  >
-                    מחק הכל
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          )}
-          {/* Import Excel */}
-          <Button variant="outline" size="sm" className="gap-1" onClick={() => fileInputRef.current?.click()} data-testid="button-import-excel">
-            <FileSpreadsheet size={15} />
-            <span className="hidden sm:inline">ייבוא מאקסל</span>
-            <span className="sm:hidden">ייבוא</span>
+          <Button className="flex-1 gap-2" onClick={() => { setName(""); setPhone(""); setAddOpen(true); }} data-testid="button-add-contact">
+            <Plus className="h-4 w-4" />
+            הוסף איש קשר
           </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            className="hidden"
-            onChange={handleFileChange}
-            data-testid="input-excel-file"
-          />
+          <Button variant="outline" className="gap-2" onClick={() => fileInputRef.current?.click()} data-testid="button-import-excel">
+            <Upload className="h-4 w-4" />
+            ייבוא Excel
+          </Button>
+          <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileUpload} />
+        </div>
 
-          {/* Add manually */}
-          <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" className="gap-1" data-testid="button-add-contact">
-                <Plus size={15} /> הוסף
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-sm mx-4" dir="rtl">
-              <DialogHeader>
-                <DialogTitle>הוסף איש קשר</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 pt-2">
-                <div className="space-y-1">
-                  <Label>שם מלא</Label>
-                  <Input
-                    data-testid="input-contact-name"
-                    value={newName}
-                    onChange={e => setNewName(e.target.value)}
-                    placeholder="ישראל ישראלי"
-                    autoFocus
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label>טלפון</Label>
-                  <Input
-                    data-testid="input-contact-phone"
-                    value={newPhone}
-                    onChange={e => setNewPhone(e.target.value)}
-                    placeholder="05X-XXXXXXX"
-                    type="tel"
-                    inputMode="numeric"
-                  />
-                </div>
-                <Button
-                  data-testid="button-save-contact"
-                  className="w-full"
-                  disabled={!newName.trim() || addContact.isPending}
-                  onClick={() => addContact.mutate({ name: newName.trim(), phone: newPhone.trim() })}
+        {/* Contacts list */}
+        {isLoading ? (
+          <div className="space-y-2">{[1,2,3,4].map(i => <div key={i} className="h-14 bg-muted rounded-lg animate-pulse" />)}</div>
+        ) : contacts.length === 0 ? (
+          <Card className="text-center py-10">
+            <CardContent>
+              <Users className="h-10 w-10 text-muted-foreground mx-auto mb-2 opacity-40" />
+              <p className="text-muted-foreground">אין אנשי קשר עדיין</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardContent className="p-0">
+              {contacts.map((c, i) => (
+                <div
+                  key={c.id}
+                  className={`flex items-center justify-between px-4 py-3 gap-3 ${i < contacts.length - 1 ? "border-b border-border/50" : ""}`}
+                  data-testid={`row-contact-${c.id}`}
                 >
-                  {addContact.isPending ? "שומר..." : "הוסף"}
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
-
-      {/* Search */}
-      {contacts.length > 5 && (
-        <div className="relative">
-          <Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            className="pr-9"
-            placeholder="חיפוש שם או טלפון..."
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            data-testid="input-search-contacts"
-          />
-        </div>
-      )}
-
-      {/* List */}
-      <Card>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="p-4 space-y-3">
-              {[1,2,3].map(i => <Skeleton key={i} className="h-14 w-full" />)}
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-14 gap-3">
-              <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
-                <Users size={24} className="text-muted-foreground" />
-              </div>
-              <p className="text-sm text-muted-foreground text-center">
-                {contacts.length === 0 ? "אין אנשי קשר עדיין" : "לא נמצאו תוצאות"}
-              </p>
-              {contacts.length === 0 && (
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <Button size="sm" onClick={() => setAddDialogOpen(true)}>
-                    <Plus size={14} className="ml-1" /> הוסף ידנית
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
-                    <FileSpreadsheet size={14} className="ml-1" /> ייבוא מאקסל
-                  </Button>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="divide-y divide-border">
-              {filtered.map(contact => (
-                <div key={contact.id} className="flex items-center gap-3 px-4 py-3" data-testid={`row-contact-${contact.id}`}>
-                  {editingId === contact.id ? (
-                    <>
-                      <div className="flex-1 flex gap-2">
-                        <Input
-                          value={editName}
-                          onChange={e => setEditName(e.target.value)}
-                          className="h-8 text-sm"
-                          data-testid={`input-edit-name-${contact.id}`}
-                        />
-                        <Input
-                          value={editPhone}
-                          onChange={e => setEditPhone(e.target.value)}
-                          className="h-8 text-sm w-32"
-                          type="tel"
-                          data-testid={`input-edit-phone-${contact.id}`}
-                        />
-                      </div>
-                      <Button
-                        size="icon" variant="ghost" className="h-8 w-8 text-green-600"
-                        onClick={() => updateContact.mutate({ id: contact.id, name: editName, phone: editPhone })}
-                        data-testid={`button-save-edit-${contact.id}`}
-                      ><Check size={15} /></Button>
-                      <Button
-                        size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground"
-                        onClick={() => setEditingId(null)}
-                      ><X size={15} /></Button>
-                    </>
-                  ) : (
-                    <>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{contact.name}</p>
-                        <p className="text-xs text-muted-foreground">{contact.phone || "—"}</p>
-                      </div>
-                      <Button
-                        size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground"
-                        onClick={() => { setEditingId(contact.id); setEditName(contact.name); setEditPhone(contact.phone); }}
-                        data-testid={`button-edit-${contact.id}`}
-                      ><Edit2 size={14} /></Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button
-                            size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                            data-testid={`button-delete-contact-${contact.id}`}
-                          ><Trash2 size={14} /></Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent dir="rtl">
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>מחיקת איש קשר</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              האם למחוק את {contact.name}? לא ניתן לשחזר.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>ביטול</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => deleteContact.mutate(contact.id)}>מחק</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </>
-                  )}
+                  <div>
+                    <div className="font-medium text-sm">{c.name}</div>
+                    <div className="text-xs text-muted-foreground">{c.phone}</div>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEdit(c)} data-testid={`button-edit-contact-${c.id}`}>
+                      <Edit2 className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10"
+                      onClick={() => deleteMutation.mutate(c.id)}
+                      data-testid={`button-delete-contact-${c.id}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
               ))}
+            </CardContent>
+          </Card>
+        )}
+      </main>
+
+      {/* Add dialog */}
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent dir="rtl" className="max-w-sm">
+          <DialogHeader><DialogTitle>הוספת איש קשר</DialogTitle></DialogHeader>
+          <div className="space-y-3 pt-1">
+            <div>
+              <Label>שם</Label>
+              <Input value={name} onChange={e => setName(e.target.value)} placeholder="ישראל ישראלי" className="mt-1" autoFocus data-testid="input-contact-name" />
             </div>
-          )}
-        </CardContent>
-      </Card>
+            <div>
+              <Label>טלפון</Label>
+              <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="050-1234567" className="mt-1" data-testid="input-contact-phone" />
+            </div>
+            <Button
+              className="w-full"
+              onClick={() => addMutation.mutate({ name: name.trim(), phone: phone.trim() })}
+              disabled={!name.trim() || !phone.trim() || addMutation.isPending}
+            >
+              {addMutation.isPending ? "מוסיף..." : "הוסף"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit dialog */}
+      <Dialog open={!!editContact} onOpenChange={v => { if (!v) setEditContact(null); }}>
+        <DialogContent dir="rtl" className="max-w-sm">
+          <DialogHeader><DialogTitle>עריכת איש קשר</DialogTitle></DialogHeader>
+          <div className="space-y-3 pt-1">
+            <div>
+              <Label>שם</Label>
+              <Input value={name} onChange={e => setName(e.target.value)} className="mt-1" data-testid="input-edit-name" />
+            </div>
+            <div>
+              <Label>טלפון</Label>
+              <Input value={phone} onChange={e => setPhone(e.target.value)} className="mt-1" data-testid="input-edit-phone" />
+            </div>
+            <Button
+              className="w-full"
+              onClick={() => editContact && editMutation.mutate({ id: editContact.id, data: { name: name.trim(), phone: phone.trim() } })}
+              disabled={!name.trim() || !phone.trim() || editMutation.isPending}
+            >
+              {editMutation.isPending ? "שומר..." : "שמור"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Import preview dialog */}
-      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
-        <DialogContent className="max-w-sm mx-4 max-h-[80vh] overflow-y-auto" dir="rtl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Upload size={18} />
-              אישור ייבוא ({importPreview.length} אנשי קשר)
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="max-h-60 overflow-y-auto divide-y divide-border border rounded-lg">
-              {importPreview.map((c, i) => (
-                <div key={i} className="flex justify-between px-3 py-2 text-sm">
-                  <span className="font-medium">{c.name}</span>
-                  <span className="text-muted-foreground">{c.phone}</span>
+      <Dialog open={importOpen} onOpenChange={v => { setImportOpen(v); if (!v) { setParsedContacts([]); setImportText(""); } }}>
+        <DialogContent dir="rtl" className="max-w-sm">
+          <DialogHeader><DialogTitle>ייבוא אנשי קשר</DialogTitle></DialogHeader>
+          <div className="space-y-3 pt-1">
+            {parsedContacts.length === 0 ? (
+              <>
+                <p className="text-sm text-muted-foreground">הדבק טקסט עם שם וטלפון בכל שורה (מופרד בטאב, פסיק או מקף):</p>
+                <Textarea
+                  value={importText}
+                  onChange={e => { setImportText(e.target.value); parseText(e.target.value); }}
+                  rows={6}
+                  placeholder={"ישראל ישראלי\t050-1234567\nשרה כהן, 052-9876543"}
+                  className="font-mono text-xs"
+                  data-testid="textarea-import"
+                />
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-medium">נמצאו {parsedContacts.length} אנשי קשר:</p>
+                <div className="max-h-48 overflow-y-auto space-y-1 border rounded-md p-2">
+                  {parsedContacts.map((c, i) => (
+                    <div key={i} className="flex items-center justify-between text-sm py-0.5">
+                      <span>{c.name}</span>
+                      <span className="text-muted-foreground text-xs">{c.phone}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            {importPreview.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                לא זוהו אנשי קשר בקובץ. ודא שהקובץ מכיל עמודות שם וטלפון.
-              </p>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setParsedContacts([])}>
+                    <X className="h-3.5 w-3.5 ml-1" />
+                    חזרה
+                  </Button>
+                  <Button
+                    className="flex-1 gap-1"
+                    onClick={() => bulkMutation.mutate(parsedContacts)}
+                    disabled={bulkMutation.isPending}
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                    {bulkMutation.isPending ? "מייבא..." : `ייבא ${parsedContacts.length} אנשי קשר`}
+                  </Button>
+                </div>
+              </>
             )}
-            <div className="flex gap-2">
-              <Button
-                className="flex-1"
-                disabled={importPreview.length === 0 || bulkImport.isPending}
-                onClick={() => bulkImport.mutate(importPreview)}
-                data-testid="button-confirm-import"
-              >
-                {bulkImport.isPending ? "מייבא..." : `ייבוא ${importPreview.length} אנשי קשר`}
-              </Button>
-              <Button variant="outline" onClick={() => { setImportDialogOpen(false); setImportPreview([]); }}>
-                ביטול
-              </Button>
-            </div>
-            <div className="text-xs text-muted-foreground bg-muted rounded p-3 space-y-1">
-              <p className="font-medium">פורמט מצופה בקובץ:</p>
-              <p>• עמודה א: שם מלא</p>
-              <p>• עמודה ב: מספר טלפון</p>
-              <p>• שורה ראשונה יכולה להיות כותרת (תידלג)</p>
-            </div>
           </div>
         </DialogContent>
       </Dialog>

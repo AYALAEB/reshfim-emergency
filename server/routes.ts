@@ -1,62 +1,49 @@
 import type { Express } from "express";
-import { createServer, type Server } from "http";
+import { type Server } from "http";
 import { storage } from "./storage";
 import { insertEventSchema, insertContactSchema, insertReportSchema } from "@shared/schema";
 import { z } from "zod";
 
-// Normalize event object to always use camelCase
-function normalizeEvent(e: any) {
-  return {
-    id: e.id,
-    name: e.name,
-    createdAt: e.createdAt ?? e.created_at ?? "",
-    isActive: e.isActive === true || e.isActive === "true" || e.active === true || e.active === "true" || e.is_active === true || e.is_active === "true",
-  };
-}
-
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
-  // ---- EVENTS ----
-  app.get("/api/events", async (req, res) => {
+  // ─── Events ────────────────────────────────────────────────
+  app.get("/api/events", async (_req, res) => {
     const events = await storage.getEvents();
-    res.json(events.map(normalizeEvent));
+    res.json(events);
   });
 
   app.get("/api/events/:id", async (req, res) => {
     const event = await storage.getEvent(Number(req.params.id));
-    if (!event) return res.status(404).json({ message: "אירוע לא נמצא" });
-    res.json(normalizeEvent(event));
+    if (!event) return res.status(404).json({ message: "Event not found" });
+    res.json(event);
   });
 
   app.post("/api/events", async (req, res) => {
     const parsed = insertEventSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
     const event = await storage.createEvent(parsed.data);
-    res.status(201).json(normalizeEvent(event));
+    res.status(201).json(event);
   });
 
   app.patch("/api/events/:id", async (req, res) => {
-    // normalize incoming isActive
-    const body = { ...req.body };
-    if ("isActive" in body) body.isActive = body.isActive === true || body.isActive === "true";
-    const event = await storage.updateEvent(Number(req.params.id), body);
-    if (!event) return res.status(404).json({ message: "אירוע לא נמצא" });
-    res.json(normalizeEvent(event));
+    const event = await storage.updateEvent(Number(req.params.id), req.body);
+    if (!event) return res.status(404).json({ message: "Event not found" });
+    res.json(event);
   });
 
   app.delete("/api/events/:id", async (req, res) => {
     await storage.deleteEvent(Number(req.params.id));
-    res.json({ ok: true });
+    res.status(204).send();
   });
 
-  // ---- CONTACTS ----
-  app.get("/api/contacts", async (req, res) => {
+  // ─── Contacts ──────────────────────────────────────────────
+  app.get("/api/contacts", async (_req, res) => {
     const contacts = await storage.getContacts();
     res.json(contacts);
   });
 
   app.get("/api/contacts/:id", async (req, res) => {
     const contact = await storage.getContact(Number(req.params.id));
-    if (!contact) return res.status(404).json({ message: "איש קשר לא נמצא" });
+    if (!contact) return res.status(404).json({ message: "Contact not found" });
     res.json(contact);
   });
 
@@ -68,60 +55,55 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.post("/api/contacts/bulk", async (req, res) => {
-    try {
-      const schema = z.array(z.object({ name: z.string(), phone: z.string() }));
-      const parsed = schema.safeParse(req.body);
-      if (!parsed.success) {
-        console.error("Bulk import validation error:", parsed.error.message);
-        return res.status(400).json({ message: parsed.error.message, details: parsed.error.issues });
-      }
-      const contacts = await storage.bulkCreateContacts(parsed.data);
-      res.status(201).json(contacts);
-    } catch (e: any) {
-      console.error("Bulk import error:", e);
-      res.status(500).json({ message: e.message });
-    }
+    const schema = z.array(insertContactSchema);
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const contacts = await storage.bulkCreateContacts(parsed.data);
+    res.status(201).json(contacts);
   });
 
   app.patch("/api/contacts/:id", async (req, res) => {
     const contact = await storage.updateContact(Number(req.params.id), req.body);
-    if (!contact) return res.status(404).json({ message: "איש קשר לא נמצא" });
+    if (!contact) return res.status(404).json({ message: "Contact not found" });
     res.json(contact);
   });
 
   app.delete("/api/contacts/:id", async (req, res) => {
     await storage.deleteContact(Number(req.params.id));
-    res.json({ ok: true });
+    res.status(204).send();
   });
 
-  app.delete("/api/contacts", async (req, res) => {
-    const contacts = await storage.getContacts();
-    for (const c of contacts) {
-      await storage.deleteContact(c.id);
-    }
-    res.json({ ok: true, deleted: contacts.length });
-  });
-
-  // ---- REPORTS ----
+  // ─── Reports ───────────────────────────────────────────────
   app.get("/api/events/:eventId/reports", async (req, res) => {
-    const reports = await storage.getReportsByEvent(Number(req.params.eventId));
+    const reports = await storage.getReports(Number(req.params.eventId));
     res.json(reports);
   });
 
   app.post("/api/reports", async (req, res) => {
     const parsed = insertReportSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    // If contactId provided, check for existing report and update
+    if (parsed.data.contactId) {
+      const existing = await storage.getReportByEventAndContact(
+        parsed.data.eventId,
+        parsed.data.contactId
+      );
+      if (existing) {
+        // Update existing
+        const updated = await storage.createReport(parsed.data); // just create new entry
+        return res.status(201).json(updated);
+      }
+    }
     const report = await storage.createReport(parsed.data);
     res.status(201).json(report);
   });
 
-  // Check if contact already reported for an event
-  app.get("/api/events/:eventId/reports/contact/:contactId", async (req, res) => {
-    const report = await storage.getReportByEventAndContact(
-      Number(req.params.eventId),
-      Number(req.params.contactId)
-    );
-    res.json(report || null);
+  // Get contact info for report form pre-fill
+  app.get("/api/report-info/:eventId/:contactId", async (req, res) => {
+    const event = await storage.getEvent(Number(req.params.eventId));
+    const contact = await storage.getContact(Number(req.params.contactId));
+    if (!event || !contact) return res.status(404).json({ message: "Not found" });
+    res.json({ event, contact });
   });
 
   return httpServer;
