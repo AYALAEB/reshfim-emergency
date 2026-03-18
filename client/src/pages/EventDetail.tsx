@@ -62,8 +62,7 @@ export default function EventDetail() {
 
   // Build WhatsApp report link
   const getReportUrl = (contactId: number) => {
-    const base = window.location.origin + window.location.pathname;
-    return `${base}#/report/${eventId}/${contactId}`;
+    return `${window.location.origin}/#/report/${eventId}/${contactId}`;
   };
 
   const getWhatsAppUrl = (contact: Contact) => {
