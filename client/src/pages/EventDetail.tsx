@@ -76,12 +76,14 @@ export default function EventDetail() {
     return `https://wa.me/${intlPhone}?text=${msg}`;
   };
 
+  const getGeneralReportUrl = () => {
+    return `${window.location.origin}/#/report/${eventId}`;
+  };
+
   const sendAllWhatsApp = () => {
-    // Open group-style message with all links
-    const base = window.location.origin + window.location.pathname;
-    const lines = notReported.map(c => `• ${c.name}: ${base}#/report/${eventId}/${c.id}`).join("\n");
+    const url = getGeneralReportUrl();
     const msg = encodeURIComponent(
-      `⚠️ *אירוע חירום – ${event.name}*\n\nנא לדווח על מצבכם:\n\n${lines}\n\nצח״י רשפים`
+      `⚠️ *אירוע חירום – ${event.name}*\n\nנא לדווח על מצבכם בלחיצה על הקישור:\n${url}\n\nצח״י רשפים`
     );
     window.open(`https://wa.me/?text=${msg}`, "_blank");
   };
