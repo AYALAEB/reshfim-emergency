@@ -1,4 +1,4 @@
-import { <Switch hook={useHashLocation}>witch, Route } from "wouter";
+import { Switch, Route } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
@@ -12,14 +12,14 @@ import PerplexityAttribution from "@/components/PerplexityAttribution";
 
 function Router() {
   return (
-    <<Switch hook={useHashLocation}>>
+    <Switch hook={useHashLocation}>
       <Route path="/" component={Dashboard} />
       <Route path="/contacts" component={Contacts} />
       <Route path="/events/:id" component={EventDetail} />
       <Route path="/report/:eventId/:contactId" component={ReportPage} />
       <Route path="/report/:eventId" component={ReportPage} />
       <Route component={NotFound} />
-    </<Switch hook={useHashLocation}>>
+    </Switch>
   );
 }
 
