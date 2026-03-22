@@ -1,101 +1,155 @@
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import Database from "better-sqlite3";
-import { eq, and } from "drizzle-orm";
-import { contacts, events, reports } from "@shared/schema";
-import type { Contact, InsertContact, Event, InsertEvent, Report, InsertReport } from "@shared/schema";
-import { normalizePhone } from "@shared/phoneUtils";
-
-const sqlite = new Database("reshafim.db");
-const db = drizzle(sqlite);
-
-// Create tables if not exists
-sqlite.exec(`
-  CREATE TABLE IF NOT EXISTS contacts (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    phone TEXT NOT NULL,
-    phone_normalized TEXT NOT NULL DEFAULT ''
-  );
-  CREATE TABLE IF NOT EXISTS events (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    created_at TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS reports (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    event_id TEXT NOT NULL,
-    contact_id TEXT NOT NULL,
-    status TEXT NOT NULL,
-    details TEXT DEFAULT '',
-    reported_at TEXT NOT NULL
-  );
-`);
-
-// Add phone_normalized column if it doesn't exist (migration for existing DBs)
-try {
-  sqlite.exec(`ALTER TABLE contacts ADD COLUMN phone_normalized TEXT NOT NULL DEFAULT '';`);
-  // Backfill existing rows
-  const rows = sqlite.prepare("SELECT id, phone FROM contacts").all() as { id: string; phone: string }[];
-  const upd = sqlite.prepare("UPDATE contacts SET phone_normalized = ? WHERE id = ?");
-  for (const r of rows) upd.run(normalizePhone(r.phone), r.id);
-} catch {
-  // Column already exists — ignore
-}
+import {
+  type Contact,
+  type InsertContact,
+  type Event,
+  type InsertEvent,
+  type Report,
+  type InsertReport,
+} from "@shared/schema";
+import { randomUUID } from "crypto";
 
 export interface IStorage {
+  // Contacts
   getContacts(): Contact[];
-  addContact(c: InsertContact): Contact;
-  deleteContact(id: string): void;
   getContact(id: string): Contact | undefined;
-  findContactByPhone(phone: string): Contact | undefined;
+  createContact(contact: InsertContact): Contact;
+  updateContact(id: string, contact: InsertContact): Contact | undefined;
+  deleteContact(id: string): boolean;
 
+  // Events
   getEvents(): Event[];
-  createEvent(e: InsertEvent): Event;
   getEvent(id: string): Event | undefined;
+  createEvent(event: InsertEvent): Event;
+  deleteEvent(id: string): boolean;
 
-  getReports(eventId: string): Report[];
-  getReport(eventId: string, contactId: string): Report | undefined;
-  submitReport(r: InsertReport): Report;
+  // Reports
+  getReportsByEvent(eventId: string): Report[];
+  getReport(id: string): Report | undefined;
+  getReportByEventAndContact(eventId: string, contactId: string): Report | undefined;
+  getReportByEventAndPhone(eventId: string, phone: string): Report | undefined;
+  createReport(report: InsertReport): Report;
 }
 
-export const storage: IStorage = {
-  getContacts() {
-    return db.select().from(contacts).all();
-  },
-  addContact(c: InsertContact) {
-    const withNorm = { ...c, phoneNormalized: normalizePhone(c.phone) };
-    return db.insert(contacts).values(withNorm).returning().get();
-  },
-  deleteContact(id: string) {
-    db.delete(contacts).where(eq(contacts.id, id)).run();
-  },
-  getContact(id: string) {
-    return db.select().from(contacts).where(eq(contacts.id, id)).get();
-  },
-  findContactByPhone(phone: string) {
-    const norm = normalizePhone(phone);
-    return db.select().from(contacts).where(eq(contacts.phoneNormalized, norm)).get();
-  },
+export class InMemoryStorage implements IStorage {
+  private contacts: Map<string, Contact> = new Map();
+  private events: Map<string, Event> = new Map();
+  private reports: Map<string, Report> = new Map();
 
-  getEvents() {
-    return db.select().from(events).all();
-  },
-  createEvent(e: InsertEvent) {
-    return db.insert(events).values(e).returning().get();
-  },
-  getEvent(id: string) {
-    return db.select().from(events).where(eq(events.id, id)).get();
-  },
+  // Contacts
+  getContacts(): Contact[] {
+    return Array.from(this.contacts.values());
+  }
 
-  getReports(eventId: string) {
-    return db.select().from(reports).where(eq(reports.eventId, eventId)).all();
-  },
-  getReport(eventId: string, contactId: string) {
-    return db.select().from(reports)
-      .where(and(eq(reports.eventId, eventId), eq(reports.contactId, contactId)))
-      .get();
-  },
-  submitReport(r: InsertReport) {
-    return db.insert(reports).values(r).returning().get();
-  },
-};
+  getContact(id: string): Contact | undefined {
+    return this.contacts.get(id);
+  }
+
+  createContact(contact: InsertContact): Contact {
+    const id = randomUUID();
+    const newContact: Contact = { id, ...contact };
+    this.contacts.set(id, newContact);
+    return newContact;
+  }
+
+  updateContact(id: string, contact: InsertContact): Contact | undefined {
+    const existing = this.contacts.get(id);
+    if (!existing) return undefined;
+    const updated: Contact = { id, ...contact };
+    this.contacts.set(id, updated);
+    return updated;
+  }
+
+  deleteContact(id: string): boolean {
+    return this.contacts.delete(id);
+  }
+
+  // Events
+  getEvents(): Event[] {
+    return Array.from(this.events.values()).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }
+
+  getEvent(id: string): Event | undefined {
+    return this.events.get(id);
+  }
+
+  createEvent(event: InsertEvent): Event {
+    const id = randomUUID();
+    const newEvent: Event = {
+      id,
+      name: event.name,
+      createdAt: new Date().toISOString(),
+    };
+    this.events.set(id, newEvent);
+    return newEvent;
+  }
+
+  deleteEvent(id: string): boolean {
+    // Also delete associated reports
+    for (const [reportId, report] of this.reports) {
+      if (report.eventId === id) {
+        this.reports.delete(reportId);
+      }
+    }
+    return this.events.delete(id);
+  }
+
+  // Reports
+  getReportsByEvent(eventId: string): Report[] {
+    return Array.from(this.reports.values())
+      .filter((r) => r.eventId === eventId)
+      .sort((a, b) => new Date(b.reportedAt).getTime() - new Date(a.reportedAt).getTime());
+  }
+
+  getReport(id: string): Report | undefined {
+    return this.reports.get(id);
+  }
+
+  getReportByEventAndContact(eventId: string, contactId: string): Report | undefined {
+    return Array.from(this.reports.values()).find(
+      (r) => r.eventId === eventId && r.contactId === contactId
+    );
+  }
+
+  getReportByEventAndPhone(eventId: string, phone: string): Report | undefined {
+    return Array.from(this.reports.values()).find(
+      (r) => r.eventId === eventId && r.phone === phone
+    );
+  }
+
+  createReport(report: InsertReport): Report {
+    // Check if already reported (by contactId or phone)
+    let existing: Report | undefined;
+    if (report.contactId) {
+      existing = this.getReportByEventAndContact(report.eventId, report.contactId);
+    }
+    if (!existing && report.phone) {
+      existing = this.getReportByEventAndPhone(report.eventId, report.phone);
+    }
+
+    if (existing) {
+      // Update existing report
+      const updated: Report = {
+        ...existing,
+        name: report.name,
+        phone: report.phone,
+        status: report.status,
+        reportedAt: new Date().toISOString(),
+      };
+      this.reports.set(existing.id, updated);
+      return updated;
+    }
+
+    const id = randomUUID();
+    const newReport: Report = {
+      id,
+      ...report,
+      reportedAt: new Date().toISOString(),
+    };
+    this.reports.set(id, newReport);
+    return newReport;
+  }
+}
+
+export const storage = new InMemoryStorage();
