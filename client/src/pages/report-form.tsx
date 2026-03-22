@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Shield, CheckCircle2, Loader2 } from "lucide-react";
 
-type ReportStatus = "in_kibbutz" | "outside_kibbutz" | "needs_help";
+type ReportStatus = "in_kibbutz" | "outside_kibbutz" | "needs_help" | "remove_me";
 
 export default function ReportFormPage() {
   const params = useParams<{ eventId: string; contactId?: string }>();
@@ -215,6 +215,23 @@ export default function ReportFormPage() {
               <div>
                 <div className="font-bold text-base text-red-700">אני זקוק/ה לעזרה</div>
                 <div className="text-xs text-red-600/70 mt-0.5">אני צריך/ה סיוע</div>
+              </div>
+            </div>
+          </button>
+
+          <button
+            onClick={() => handleSubmit("remove_me")}
+            disabled={!canSubmit}
+            className="w-full rounded-2xl border-2 border-gray-300/50 bg-gray-100/50 hover:bg-gray-200/50 active:bg-gray-300/50 p-4 text-right transition-all disabled:opacity-40 disabled:cursor-not-allowed mt-2"
+            data-testid="button-status-remove-me"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-gray-400 flex items-center justify-center flex-shrink-0">
+                <span className="text-xl">❌</span>
+              </div>
+              <div>
+                <div className="font-semibold text-sm text-gray-600">נא להסיר אותי מרשימת הדיווחים</div>
+                <div className="text-xs text-gray-400 mt-0.5">אינני מעוניין לקבל הודעות בעתיד</div>
               </div>
             </div>
           </button>

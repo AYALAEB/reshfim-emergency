@@ -18,7 +18,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ArrowRight, Send, MessageCircle, Users, Copy, Check, RefreshCw } from "lucide-react";
+import { ArrowRight, Send, MessageCircle, Users, Copy, Check, RefreshCw, Download } from "lucide-react";
+import * as XLSX from "xlsx";
 import { Skeleton } from "@/components/ui/skeleton";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -38,6 +39,8 @@ function getStatusBadge(status: string) {
       return <Badge className="bg-blue-500/10 text-blue-600 border-blue-500/20 hover:bg-blue-500/20">מחוץ לקיבוץ ✓</Badge>;
     case "needs_help":
       return <Badge className="bg-red-500/10 text-red-600 border-red-500/20 hover:bg-red-500/20">זקוק/ה לעזרה!</Badge>;
+    case "remove_me":
+      return <Badge className="bg-gray-200 text-gray-500 border-gray-300 hover:bg-gray-300">הסר מרשימה</Badge>;
     default:
       return <Badge variant="secondary" className="text-muted-foreground">לא דיווח/ה</Badge>;
   }
@@ -132,6 +135,73 @@ export default function EventReportPage() {
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/events", eventId, "reports"] });
     queryClient.invalidateQueries({ queryKey: ["/api/events", eventId, "stats"] });
+  };
+
+  const exportToExcel = () => {
+    if (!contacts) return;
+
+    const statusLabel = (status: string) => {
+      switch (status) {
+        case "in_kibbutz": return "בקיבוץ - הכל בסדר";
+        case "outside_kibbutz": return "מחוץ לקיבוץ - הכל בסדר";
+        case "needs_help": return "זקוק/ה לעזרה";
+        case "remove_me": return "בקש הסרה מרשימה";
+        default: return "לא דיווח/ה";
+      }
+    };
+
+    // Contacts rows
+    const rows = contacts.map((contact) => {
+      const report = getContactStatus(contact.id);
+      return {
+        "שם": contact.name,
+        "טלפון": formatPhoneDisplay(contact.phone),
+        "סטטוס": statusLabel(report?.status || ""),
+        "שעת דיווח": report
+          ? new Date(report.reportedAt).toLocaleString("he-IL")
+          : "",
+      };
+    });
+
+    // Extra rows (non-contact reports via general link)
+    nonContactReports.forEach((report) => {
+      rows.push({
+        "שם": report.name + " (חיצוני)",
+        "טלפון": formatPhoneDisplay(report.phone),
+        "סטטוס": statusLabel(report.status),
+        "שעת דיווח": new Date(report.reportedAt).toLocaleString("he-IL"),
+      });
+    });
+
+    const ws = XLSX.utils.json_to_sheet(rows, { header: ["שם", "טלפון", "סטטוס", "שעת דיווח"] });
+
+    // Column widths
+    ws["!cols"] = [
+      { wch: 25 }, // שם
+      { wch: 18 }, // טלפון
+      { wch: 28 }, // סטטוס
+      { wch: 22 }, // שעת דיווח
+    ];
+
+    // Summary rows at the top
+    const summaryRows = [
+      { "שם": `אירוע: ${event?.name}`, "טלפון": "", "סטטוס": "", "שעת דיווח": "" },
+      { "שם": `תאריך: ${event ? new Date(event.createdAt).toLocaleString("he-IL") : ""}`, "טלפון": "", "סטטוס": "", "שעת דיווח": "" },
+      { "שם": `סה"כ אנשי קשר: ${stats?.total || 0}`, "טלפון": `דיווחו: ${stats?.reported || 0}`, "סטטוס": `לא דיווחו: ${stats?.notReported || 0}`, "שעת דיווח": "" },
+      { "שם": `בקיבוץ: ${stats?.inKibbutz || 0}`, "טלפון": `מחוץ לקיבוץ: ${stats?.outsideKibbutz || 0}`, "סטטוס": `זקוקים לעזרה: ${stats?.needsHelp || 0}`, "שעת דיווח": "" },
+      { "שם": "", "טלפון": "", "סטטוס": "", "שעת דיווח": "" },
+    ];
+
+    const wsSummary = XLSX.utils.json_to_sheet([...summaryRows, ...rows], {
+      header: ["שם", "טלפון", "סטטוס", "שעת דיווח"],
+    });
+    wsSummary["!cols"] = ws["!cols"];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, wsSummary, "דוח אירוע");
+
+    const fileName = `דוח-${event?.name?.replace(/[^\u0590-\u05FFa-zA-Z0-9\s-]/g, "").trim() || "אירוע"}-${new Date().toLocaleDateString("he-IL").replace(/\//g, "-")}.xlsx`;
+    XLSX.writeFile(wb, fileName);
   };
 
   // Build merged contact-report table
@@ -231,7 +301,7 @@ export default function EventReportPage() {
       )}
 
       {/* Action Buttons */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
         <Button
           onClick={() => setShowGroupModal(true)}
           className="h-auto py-4 gap-3 bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -253,6 +323,18 @@ export default function EventReportPage() {
           <div className="text-right">
             <div className="font-bold">שלח קישורים אישיים</div>
             <div className="text-xs opacity-60">שלח לכל איש קשר בנפרד</div>
+          </div>
+        </Button>
+        <Button
+          onClick={exportToExcel}
+          variant="outline"
+          className="h-auto py-4 gap-3 border-2"
+          data-testid="button-export-excel"
+        >
+          <Download className="w-5 h-5 text-green-700" />
+          <div className="text-right">
+            <div className="font-bold">ייצוא לאקסל</div>
+            <div className="text-xs opacity-60">הורד דוח Excel מלא</div>
           </div>
         </Button>
       </div>

@@ -25,7 +25,7 @@ export type Event = z.infer<typeof eventSchema>;
 export type InsertEvent = z.infer<typeof insertEventSchema>;
 
 // Report
-export type ReportStatus = "in_kibbutz" | "outside_kibbutz" | "needs_help";
+export type ReportStatus = "in_kibbutz" | "outside_kibbutz" | "needs_help" | "remove_me";
 
 export const reportSchema = z.object({
   id: z.string(),
@@ -33,7 +33,7 @@ export const reportSchema = z.object({
   contactId: z.string().optional(),
   name: z.string(),
   phone: z.string(),
-  status: z.enum(["in_kibbutz", "outside_kibbutz", "needs_help"]),
+  status: z.enum(["in_kibbutz", "outside_kibbutz", "needs_help", "remove_me"]),
   reportedAt: z.string(),
 });
 
@@ -42,7 +42,7 @@ export const insertReportSchema = z.object({
   contactId: z.string().optional(),
   name: z.string().min(1),
   phone: z.string().min(1),
-  status: z.enum(["in_kibbutz", "outside_kibbutz", "needs_help"]),
+  status: z.enum(["in_kibbutz", "outside_kibbutz", "needs_help", "remove_me"]),
 });
 
 export type Report = z.infer<typeof reportSchema>;
