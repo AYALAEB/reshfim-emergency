@@ -4,79 +4,47 @@
 
 @layer base {
   :root {
-    /* Emergency app: crisp white background, strong red alert accent */
-    --background: 0 0% 98%;
-    --foreground: 220 15% 10%;
+    --background: 0 0% 96%;
+    --foreground: 0 0% 10%;
     --card: 0 0% 100%;
-    --card-foreground: 220 15% 10%;
+    --card-foreground: 0 0% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 220 15% 10%;
-    --primary: 0 75% 42%;       /* Deep emergency red */
+    --popover-foreground: 0 0% 10%;
+    --primary: 4 75% 47%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 14% 93%;
-    --secondary-foreground: 220 15% 20%;
-    --muted: 220 14% 94%;
-    --muted-foreground: 220 10% 46%;
-    --accent: 220 14% 90%;
-    --accent-foreground: 220 15% 15%;
+    --secondary: 0 0% 90%;
+    --secondary-foreground: 0 0% 20%;
+    --muted: 0 0% 92%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 4 75% 47%;
+    --accent-foreground: 0 0% 100%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 13% 87%;
-    --input: 220 13% 87%;
-    --ring: 0 75% 42%;
-    --radius: 0.5rem;
+    --border: 0 0% 85%;
+    --input: 0 0% 85%;
+    --ring: 4 75% 47%;
+    --radius: 0.75rem;
 
-    /* Status colors */
-    --safe-in: 142 71% 45%;
-    --safe-out: 214 89% 52%;
-    --need-help: 0 84% 60%;
-    --no-report: 220 10% 65%;
+    /* status colors */
+    --green: 145 63% 42%;
+    --blue: 210 70% 45%;
+    --red-alert: 4 75% 47%;
   }
 }
 
-@layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground;
-    font-family: 'Segoe UI', 'Arial', sans-serif;
-    direction: rtl;
-  }
+* {
+  box-sizing: border-box;
 }
 
-/* RTL overrides */
-.sidebar-nav a {
+body {
   direction: rtl;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  min-height: 100vh;
 }
 
-/* Status badges */
-.status-safe-in {
-  background: hsl(142 71% 45% / 0.15);
-  color: hsl(142 71% 32%);
-  border: 1px solid hsl(142 71% 45% / 0.3);
-}
-.status-safe-out {
-  background: hsl(214 89% 52% / 0.15);
-  color: hsl(214 89% 38%);
-  border: 1px solid hsl(214 89% 52% / 0.3);
-}
-.status-need-help {
-  background: hsl(0 84% 60% / 0.15);
-  color: hsl(0 84% 45%);
-  border: 1px solid hsl(0 84% 60% / 0.3);
-}
-.status-no-report {
-  background: hsl(220 10% 65% / 0.12);
-  color: hsl(220 10% 40%);
-  border: 1px solid hsl(220 10% 65% / 0.3);
-}
-
-/* Alert pulse for help needed */
-@keyframes pulse-red {
-  0%, 100% { box-shadow: 0 0 0 0 hsl(0 84% 60% / 0.4); }
-  50% { box-shadow: 0 0 0 8px hsl(0 84% 60% / 0); }
-}
-.help-pulse {
-  animation: pulse-red 2s ease-in-out infinite;
+/* Ensure RTL text in Hebrew */
+input, textarea, button {
+  font-family: inherit;
 }

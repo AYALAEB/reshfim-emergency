@@ -1,118 +1,85 @@
-import { Event, InsertEvent, Contact, InsertContact, Report, InsertReport } from "@shared/schema";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import Database from "better-sqlite3";
+import { eq, and } from "drizzle-orm";
+import { contacts, events, reports } from "@shared/schema";
+import type { Contact, InsertContact, Event, InsertEvent, Report, InsertReport } from "@shared/schema";
+
+const sqlite = new Database("reshafim.db");
+const db = drizzle(sqlite);
+
+// Create tables if not exists
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS contacts (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    phone TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS events (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL,
+    contact_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    details TEXT DEFAULT '',
+    reported_at TEXT NOT NULL
+  );
+`);
 
 export interface IStorage {
-  // Events
-  getEvents(): Promise<Event[]>;
-  getEvent(id: number): Promise<Event | undefined>;
-  createEvent(event: InsertEvent): Promise<Event>;
-  updateEvent(id: number, data: Partial<Event>): Promise<Event | undefined>;
-  deleteEvent(id: number): Promise<void>;
-
   // Contacts
-  getContacts(): Promise<Contact[]>;
-  getContact(id: number): Promise<Contact | undefined>;
-  createContact(contact: InsertContact): Promise<Contact>;
-  updateContact(id: number, data: Partial<Contact>): Promise<Contact | undefined>;
-  deleteContact(id: number): Promise<void>;
-  bulkCreateContacts(contacts: InsertContact[]): Promise<Contact[]>;
+  getContacts(): Contact[];
+  addContact(c: InsertContact): Contact;
+  deleteContact(id: string): void;
+  getContact(id: string): Contact | undefined;
+
+  // Events
+  getEvents(): Event[];
+  createEvent(e: InsertEvent): Event;
+  getEvent(id: string): Event | undefined;
 
   // Reports
-  getReports(eventId: number): Promise<Report[]>;
-  getReport(id: number): Promise<Report | undefined>;
-  createReport(report: InsertReport): Promise<Report>;
-  getReportByEventAndContact(eventId: number, contactId: number): Promise<Report | undefined>;
+  getReports(eventId: string): Report[];
+  getReport(eventId: string, contactId: string): Report | undefined;
+  submitReport(r: InsertReport): Report;
 }
 
-class MemStorage implements IStorage {
-  private events: Map<number, Event> = new Map();
-  private contacts: Map<number, Contact> = new Map();
-  private reports: Map<number, Report> = new Map();
-  private eventCounter = 1;
-  private contactCounter = 1;
-  private reportCounter = 1;
+export const storage: IStorage = {
+  getContacts() {
+    return db.select().from(contacts).all();
+  },
+  addContact(c: InsertContact) {
+    return db.insert(contacts).values(c).returning().get();
+  },
+  deleteContact(id: string) {
+    db.delete(contacts).where(eq(contacts.id, id)).run();
+  },
+  getContact(id: string) {
+    return db.select().from(contacts).where(eq(contacts.id, id)).get();
+  },
 
-  async getEvents(): Promise<Event[]> {
-    return Array.from(this.events.values()).sort((a, b) => b.id - a.id);
-  }
+  getEvents() {
+    return db.select().from(events).all();
+  },
+  createEvent(e: InsertEvent) {
+    return db.insert(events).values(e).returning().get();
+  },
+  getEvent(id: string) {
+    return db.select().from(events).where(eq(events.id, id)).get();
+  },
 
-  async getEvent(id: number): Promise<Event | undefined> {
-    return this.events.get(id);
-  }
-
-  async createEvent(event: InsertEvent): Promise<Event> {
-    const newEvent: Event = { ...event, id: this.eventCounter++ };
-    this.events.set(newEvent.id, newEvent);
-    return newEvent;
-  }
-
-  async updateEvent(id: number, data: Partial<Event>): Promise<Event | undefined> {
-    const event = this.events.get(id);
-    if (!event) return undefined;
-    const updated = { ...event, ...data };
-    this.events.set(id, updated);
-    return updated;
-  }
-
-  async deleteEvent(id: number): Promise<void> {
-    this.events.delete(id);
-  }
-
-  async getContacts(): Promise<Contact[]> {
-    return Array.from(this.contacts.values()).sort((a, b) => a.name.localeCompare(b.name, 'he'));
-  }
-
-  async getContact(id: number): Promise<Contact | undefined> {
-    return this.contacts.get(id);
-  }
-
-  async createContact(contact: InsertContact): Promise<Contact> {
-    const newContact: Contact = { ...contact, id: this.contactCounter++ };
-    this.contacts.set(newContact.id, newContact);
-    return newContact;
-  }
-
-  async updateContact(id: number, data: Partial<Contact>): Promise<Contact | undefined> {
-    const contact = this.contacts.get(id);
-    if (!contact) return undefined;
-    const updated = { ...contact, ...data };
-    this.contacts.set(id, updated);
-    return updated;
-  }
-
-  async deleteContact(id: number): Promise<void> {
-    this.contacts.delete(id);
-  }
-
-  async bulkCreateContacts(contacts: InsertContact[]): Promise<Contact[]> {
-    const created: Contact[] = [];
-    for (const contact of contacts) {
-      const newContact = await this.createContact(contact);
-      created.push(newContact);
-    }
-    return created;
-  }
-
-  async getReports(eventId: number): Promise<Report[]> {
-    return Array.from(this.reports.values())
-      .filter(r => r.eventId === eventId)
-      .sort((a, b) => b.id - a.id);
-  }
-
-  async getReport(id: number): Promise<Report | undefined> {
-    return this.reports.get(id);
-  }
-
-  async createReport(report: InsertReport): Promise<Report> {
-    const newReport: Report = { ...report, id: this.reportCounter++ };
-    this.reports.set(newReport.id, newReport);
-    return newReport;
-  }
-
-  async getReportByEventAndContact(eventId: number, contactId: number): Promise<Report | undefined> {
-    return Array.from(this.reports.values()).find(
-      r => r.eventId === eventId && r.contactId === contactId
-    );
-  }
-}
-
-export const storage = new MemStorage();
+  getReports(eventId: string) {
+    return db.select().from(reports).where(eq(reports.eventId, eventId)).all();
+  },
+  getReport(eventId: string, contactId: string) {
+    return db.select().from(reports)
+      .where(and(eq(reports.eventId, eventId), eq(reports.contactId, contactId)))
+      .get();
+  },
+  submitReport(r: InsertReport) {
+    return db.insert(reports).values(r).returning().get();
+  },
+};

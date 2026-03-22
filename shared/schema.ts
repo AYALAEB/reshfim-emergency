@@ -1,39 +1,36 @@
-import { pgTable, text, integer, boolean, serial } from "drizzle-orm/pg-core";
+import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// Events table
-export const events = pgTable("events", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  createdAt: text("created_at").notNull(),
-  isActive: boolean("is_active").notNull().default(true),
-});
-
-export const insertEventSchema = createInsertSchema(events).omit({ id: true });
-export type InsertEvent = z.infer<typeof insertEventSchema>;
-export type Event = typeof events.$inferSelect;
-
-// Contacts table
-export const contacts = pgTable("contacts", {
-  id: serial("id").primaryKey(),
+// Contacts (kibbutz members)
+export const contacts = sqliteTable("contacts", {
+  id: text("id").primaryKey(),
   name: text("name").notNull(),
   phone: text("phone").notNull(),
 });
 
-export const insertContactSchema = createInsertSchema(contacts).omit({ id: true });
+export const insertContactSchema = createInsertSchema(contacts);
 export type InsertContact = z.infer<typeof insertContactSchema>;
 export type Contact = typeof contacts.$inferSelect;
 
-// Reports table
-export const reports = pgTable("reports", {
-  id: serial("id").primaryKey(),
-  eventId: integer("event_id").notNull(),
-  contactId: integer("contact_id"),
+// Events (emergency incidents)
+export const events = sqliteTable("events", {
+  id: text("id").primaryKey(),
   name: text("name").notNull(),
-  phone: text("phone"),
-  status: text("status").notNull(), // 'safe_in', 'safe_out', 'need_help'
-  notes: text("notes"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const insertEventSchema = createInsertSchema(events);
+export type InsertEvent = z.infer<typeof insertEventSchema>;
+export type Event = typeof events.$inferSelect;
+
+// Reports (individual status reports)
+export const reports = sqliteTable("reports", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  eventId: text("event_id").notNull(),
+  contactId: text("contact_id").notNull(),
+  status: text("status").notNull(), // 'in' | 'out' | 'help'
+  details: text("details").default(""),
   reportedAt: text("reported_at").notNull(),
 });
 
