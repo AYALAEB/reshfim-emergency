@@ -46,9 +46,11 @@ export default function EventDetailPage() {
   const helpPeople = contacts.filter(c => reportMap[c.id]?.status === "help");
   const baseUrl = window.location.origin + window.location.pathname;
 
+  // Normalize for WhatsApp — must be international format without +
   const formatPhone = (phone: string) => {
     let p = phone.replace(/\D/g, "");
-    if (p.startsWith("0")) p = "972" + p.slice(1);
+    if (p.startsWith("972")) return p;       // already international
+    if (p.startsWith("0")) return "972" + p.slice(1);
     return p;
   };
 

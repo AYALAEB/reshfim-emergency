@@ -2,6 +2,7 @@ import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { insertContactSchema, insertEventSchema, insertReportSchema } from "@shared/schema";
+import { normalizePhone } from "@shared/phoneUtils";
 import { nanoid } from "nanoid";
 
 export function registerRoutes(httpServer: Server, app: Express) {
@@ -12,7 +13,10 @@ export function registerRoutes(httpServer: Server, app: Express) {
   });
 
   app.post("/api/contacts", (req, res) => {
-    const parsed = insertContactSchema.safeParse({ ...req.body, id: nanoid() });
+    // Check duplicate by normalized phone
+    const existing = storage.findContactByPhone(req.body.phone ?? "");
+    if (existing) return res.status(409).json({ error: "duplicate", contact: existing });
+    const parsed = insertContactSchema.safeParse({ ...req.body, id: nanoid(), phoneNormalized: normalizePhone(req.body.phone ?? "") });
     if (!parsed.success) return res.status(400).json({ error: parsed.error });
     const contact = storage.addContact(parsed.data);
     res.json(contact);
@@ -23,18 +27,21 @@ export function registerRoutes(httpServer: Server, app: Express) {
     res.json({ ok: true });
   });
 
-  // Bulk import contacts
+  // Bulk import contacts — skip duplicates by normalized phone
   app.post("/api/contacts/bulk", (req, res) => {
     const { items } = req.body as { items: { name: string; phone: string }[] };
     if (!Array.isArray(items)) return res.status(400).json({ error: "items must be array" });
     const added: any[] = [];
+    let skipped = 0;
     for (const item of items) {
       try {
-        const c = storage.addContact({ id: nanoid(), name: item.name, phone: item.phone });
+        const existing = storage.findContactByPhone(item.phone);
+        if (existing) { skipped++; continue; }
+        const c = storage.addContact({ id: nanoid(), name: item.name, phone: item.phone, phoneNormalized: normalizePhone(item.phone) });
         added.push(c);
-      } catch {}
+      } catch { skipped++; }
     }
-    res.json({ added: added.length, contacts: added });
+    res.json({ added: added.length, skipped, contacts: added });
   });
 
   // ---- EVENTS ----

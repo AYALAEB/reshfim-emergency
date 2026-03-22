@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import { eq, and } from "drizzle-orm";
 import { contacts, events, reports } from "@shared/schema";
 import type { Contact, InsertContact, Event, InsertEvent, Report, InsertReport } from "@shared/schema";
+import { normalizePhone } from "@shared/phoneUtils";
 
 const sqlite = new Database("reshafim.db");
 const db = drizzle(sqlite);
@@ -12,7 +13,8 @@ sqlite.exec(`
   CREATE TABLE IF NOT EXISTS contacts (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    phone TEXT NOT NULL
+    phone TEXT NOT NULL,
+    phone_normalized TEXT NOT NULL DEFAULT ''
   );
   CREATE TABLE IF NOT EXISTS events (
     id TEXT PRIMARY KEY,
@@ -29,19 +31,28 @@ sqlite.exec(`
   );
 `);
 
+// Add phone_normalized column if it doesn't exist (migration for existing DBs)
+try {
+  sqlite.exec(`ALTER TABLE contacts ADD COLUMN phone_normalized TEXT NOT NULL DEFAULT '';`);
+  // Backfill existing rows
+  const rows = sqlite.prepare("SELECT id, phone FROM contacts").all() as { id: string; phone: string }[];
+  const upd = sqlite.prepare("UPDATE contacts SET phone_normalized = ? WHERE id = ?");
+  for (const r of rows) upd.run(normalizePhone(r.phone), r.id);
+} catch {
+  // Column already exists — ignore
+}
+
 export interface IStorage {
-  // Contacts
   getContacts(): Contact[];
   addContact(c: InsertContact): Contact;
   deleteContact(id: string): void;
   getContact(id: string): Contact | undefined;
+  findContactByPhone(phone: string): Contact | undefined;
 
-  // Events
   getEvents(): Event[];
   createEvent(e: InsertEvent): Event;
   getEvent(id: string): Event | undefined;
 
-  // Reports
   getReports(eventId: string): Report[];
   getReport(eventId: string, contactId: string): Report | undefined;
   submitReport(r: InsertReport): Report;
@@ -52,13 +63,18 @@ export const storage: IStorage = {
     return db.select().from(contacts).all();
   },
   addContact(c: InsertContact) {
-    return db.insert(contacts).values(c).returning().get();
+    const withNorm = { ...c, phoneNormalized: normalizePhone(c.phone) };
+    return db.insert(contacts).values(withNorm).returning().get();
   },
   deleteContact(id: string) {
     db.delete(contacts).where(eq(contacts.id, id)).run();
   },
   getContact(id: string) {
     return db.select().from(contacts).where(eq(contacts.id, id)).get();
+  },
+  findContactByPhone(phone: string) {
+    const norm = normalizePhone(phone);
+    return db.select().from(contacts).where(eq(contacts.phoneNormalized, norm)).get();
   },
 
   getEvents() {

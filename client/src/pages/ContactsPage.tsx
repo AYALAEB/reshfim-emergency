@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import Layout from "./Layout";
+import * as XLSX from "xlsx";
 import type { Contact } from "@shared/schema";
 
 export default function ContactsPage() {
@@ -69,45 +70,60 @@ export default function ContactsPage() {
 
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const text = ev.target?.result as string;
-      if (!text) { setImportResult("שגיאה בקריאת הקובץ"); return; }
+      try {
+        const data = ev.target?.result;
+        if (!data) { setImportResult("שגיאה בקריאת הקובץ"); return; }
 
-      // Detect CSV vs TSV vs Excel-exported CSV
-      // Excel usually exports with comma or semicolon; TSV uses tab
-      const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
-      
-      // Skip header row if first line contains "שם" or "name" or "טלפון" or "phone"
-      const firstLine = lines[0]?.toLowerCase() ?? "";
-      const startIdx = (firstLine.includes("שם") || firstLine.includes("name") || 
-                        firstLine.includes("טלפון") || firstLine.includes("phone")) ? 1 : 0;
-      
-      const items: { name: string; phone: string }[] = [];
-      let skipped = 0;
+        // Use SheetJS to read xlsx, xls, csv — all formats
+        const workbook = XLSX.read(data, { type: "array" });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
 
-      for (let i = startIdx; i < lines.length; i++) {
-        const line = lines[i];
-        // Try tab, comma, semicolon as separators
-        const parts = line.split(/\t|;|,/).map(s => s.trim().replace(/^"|"$/g, '')).filter(Boolean);
-        if (parts.length < 2) { skipped++; continue; }
-        const name = parts[0];
-        const phone = parts[1];
-        if (!name || !phone) { skipped++; continue; }
-        items.push({ name, phone });
+        if (!rows.length) { setImportResult("הקובץ ריק"); return; }
+
+        // Auto-detect header row — skip if first row contains text labels
+        const firstRow = rows[0].map((c: any) => String(c).toLowerCase());
+        const isHeader = firstRow.some(c =>
+          c.includes("שם") || c.includes("name") || c.includes("טלפון") || c.includes("phone")
+        );
+        const startIdx = isHeader ? 1 : 0;
+
+        // Auto-detect which columns are name and phone
+        // Strategy: find column with numbers (phone) and column with text (name)
+        let nameCol = 0, phoneCol = 1;
+        if (isHeader) {
+          firstRow.forEach((cell: string, i: number) => {
+            if (cell.includes("שם") || cell.includes("name")) nameCol = i;
+            if (cell.includes("טלפון") || cell.includes("phone") || cell.includes("mobile")) phoneCol = i;
+          });
+        }
+
+        const items: { name: string; phone: string }[] = [];
+        let skipped = 0;
+
+        for (let i = startIdx; i < rows.length; i++) {
+          const row = rows[i];
+          const name  = String(row[nameCol]  ?? "").trim();
+          const phone = String(row[phoneCol] ?? "").trim();
+          if (!name || !phone || phone === "0") { skipped++; continue; }
+          items.push({ name, phone });
+        }
+
+        if (items.length === 0) {
+          setImportResult("לא נמצאו נתונים. ודא/י שיש עמודת שם ועמודת טלפון.");
+          return;
+        }
+
+        bulkImport.mutate(items);
+        if (skipped) setImportResult(`מייבא... (${skipped} שורות ריקות דולגו)`);
+
+      } catch (err) {
+        setImportResult("שגיאה בקריאת הקובץ — נסה/י שוב");
       }
-
-      if (items.length === 0) {
-        setImportResult("לא נמצאו נתונים תקינים בקובץ. ודא/י שיש עמודת שם ועמודת טלפון.");
-        return;
-      }
-
-      bulkImport.mutate(items);
-      if (skipped) setImportResult(`דולגו ${skipped} שורות • טוען...`);
     };
 
     reader.onerror = () => setImportResult("שגיאה בקריאת הקובץ");
-    reader.readAsText(file, "UTF-8");
-    
-    // Reset file input so same file can be re-uploaded
+    reader.readAsArrayBuffer(file);
     e.target.value = "";
   };
 
@@ -195,12 +211,12 @@ export default function ContactsPage() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".csv,.txt,.tsv,.xls,.xlsx"
+                accept=".xlsx,.xls,.csv,.txt,.tsv"
                 onChange={handleFileUpload}
                 className="hidden"
               />
               <p className="text-xs text-gray-400 mt-2">
-                תומך ב: CSV, TSV — לקובץ Excel שמור כ-CSV תחילה
+                תומך ב: Excel (xlsx/xls), CSV — ללא צורך בשינויים
               </p>
             </div>
 

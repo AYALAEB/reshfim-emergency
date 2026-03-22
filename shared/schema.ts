@@ -7,6 +7,7 @@ export const contacts = sqliteTable("contacts", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   phone: text("phone").notNull(),
+  phoneNormalized: text("phone_normalized").notNull().default(""),
 });
 
 export const insertContactSchema = createInsertSchema(contacts);
