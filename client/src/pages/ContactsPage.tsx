@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import Layout from "./Layout";
@@ -12,6 +12,7 @@ export default function ContactsPage() {
   const [importText, setImportText] = useState("");
   const [importResult, setImportResult] = useState("");
   const [search, setSearch] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: contacts = [], isLoading } = useQuery<Contact[]>({
     queryKey: ["/api/contacts"],
@@ -40,8 +41,9 @@ export default function ContactsPage() {
     },
   });
 
-  const handleImport = () => {
-    const lines = importText.trim().split("\n").filter(l => l.trim());
+  // Parse lines of text into name+phone pairs
+  const parseLines = (text: string) => {
+    const lines = text.trim().split("\n").filter(l => l.trim());
     const items: { name: string; phone: string }[] = [];
     let skipped = 0;
     for (const line of lines) {
@@ -49,9 +51,64 @@ export default function ContactsPage() {
       if (parts.length < 2) { skipped++; continue; }
       items.push({ name: parts[0], phone: parts[1] });
     }
-    if (items.length === 0) { setImportResult("לא נמצאו נתונים"); return; }
-    bulkImport.mutate(items);
+    return { items, skipped };
+  };
+
+  const handleTextImport = () => {
+    const { items, skipped } = parseLines(importText);
+    if (items.length === 0) { setImportResult("לא נמצאו נתונים תקינים"); return; }
     if (skipped) setImportResult(`דולגו ${skipped} שורות לא תקינות`);
+    bulkImport.mutate(items);
+  };
+
+  // Handle Excel / CSV file upload
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportResult("קורא קובץ...");
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      if (!text) { setImportResult("שגיאה בקריאת הקובץ"); return; }
+
+      // Detect CSV vs TSV vs Excel-exported CSV
+      // Excel usually exports with comma or semicolon; TSV uses tab
+      const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
+      
+      // Skip header row if first line contains "שם" or "name" or "טלפון" or "phone"
+      const firstLine = lines[0]?.toLowerCase() ?? "";
+      const startIdx = (firstLine.includes("שם") || firstLine.includes("name") || 
+                        firstLine.includes("טלפון") || firstLine.includes("phone")) ? 1 : 0;
+      
+      const items: { name: string; phone: string }[] = [];
+      let skipped = 0;
+
+      for (let i = startIdx; i < lines.length; i++) {
+        const line = lines[i];
+        // Try tab, comma, semicolon as separators
+        const parts = line.split(/\t|;|,/).map(s => s.trim().replace(/^"|"$/g, '')).filter(Boolean);
+        if (parts.length < 2) { skipped++; continue; }
+        const name = parts[0];
+        const phone = parts[1];
+        if (!name || !phone) { skipped++; continue; }
+        items.push({ name, phone });
+      }
+
+      if (items.length === 0) {
+        setImportResult("לא נמצאו נתונים תקינים בקובץ. ודא/י שיש עמודת שם ועמודת טלפון.");
+        return;
+      }
+
+      bulkImport.mutate(items);
+      if (skipped) setImportResult(`דולגו ${skipped} שורות • טוען...`);
+    };
+
+    reader.onerror = () => setImportResult("שגיאה בקריאת הקובץ");
+    reader.readAsText(file, "UTF-8");
+    
+    // Reset file input so same file can be re-uploaded
+    e.target.value = "";
   };
 
   const filtered = contacts.filter(c =>
@@ -73,10 +130,10 @@ export default function ContactsPage() {
           </button>
           <button
             data-testid="btn-import"
-            onClick={() => { setShowImport(!showImport); setShowForm(false); }}
+            onClick={() => { setShowImport(!showImport); setShowForm(false); setImportResult(""); }}
             className="bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition"
           >
-            📥 ייבוא מ-Excel
+            📥 ייבוא
           </button>
         </div>
 
@@ -115,41 +172,75 @@ export default function ContactsPage() {
               >
                 {addContact.isPending ? "שומר..." : "הוסף"}
               </button>
-              <button
-                onClick={() => setShowForm(false)}
-                className="px-4 bg-gray-200 rounded-lg text-sm font-medium"
-              >
-                ביטול
-              </button>
+              <button onClick={() => setShowForm(false)} className="px-4 bg-gray-200 rounded-lg text-sm font-medium">ביטול</button>
             </div>
           </div>
         )}
 
-        {/* Import form */}
+        {/* Import panel */}
         {showImport && (
-          <div className="mt-4 space-y-2">
-            <p className="text-xs text-gray-500">הדבק מ-Excel: עמודה שם | עמודה טלפון (הפרדה בטאב, פסיק, או 2+ רווחים)</p>
-            <textarea
-              data-testid="textarea-import"
-              value={importText}
-              onChange={e => setImportText(e.target.value)}
-              rows={5}
-              placeholder={"ישראל ישראלי\t050-1234567\nשרה כהן\t052-9876543"}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 font-mono"
-              dir="auto"
-            />
-            <div className="flex gap-2">
+          <div className="mt-4 space-y-3">
+            {/* File upload */}
+            <div className="border-2 border-dashed border-blue-300 rounded-xl p-4 text-center bg-blue-50">
+              <p className="text-sm font-semibold text-blue-700 mb-1">📂 העלאת קובץ Excel / CSV</p>
+              <p className="text-xs text-gray-500 mb-3">
+                קובץ CSV שיוצא מ-Excel עם עמודות: שם | טלפון
+              </p>
               <button
-                data-testid="btn-do-import"
-                onClick={handleImport}
-                disabled={!importText.trim() || bulkImport.isPending}
-                className="flex-1 bg-blue-600 text-white font-semibold py-2 rounded-lg text-sm disabled:opacity-50"
+                onClick={() => fileInputRef.current?.click()}
+                className="bg-blue-600 text-white font-semibold px-5 py-2 rounded-lg text-sm hover:bg-blue-700 transition"
               >
-                {bulkImport.isPending ? "מייבא..." : "ייבא"}
+                בחר קובץ
               </button>
-              <button onClick={() => setShowImport(false)} className="px-4 bg-gray-200 rounded-lg text-sm font-medium">ביטול</button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,.txt,.tsv,.xls,.xlsx"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+              <p className="text-xs text-gray-400 mt-2">
+                תומך ב: CSV, TSV — לקובץ Excel שמור כ-CSV תחילה
+              </p>
             </div>
-            {importResult && <p className="text-sm text-green-700">{importResult}</p>}
+
+            {/* Divider */}
+            <div className="flex items-center gap-2 text-gray-400 text-xs">
+              <div className="flex-1 h-px bg-gray-200" />
+              או הדבק טקסט ישירות
+              <div className="flex-1 h-px bg-gray-200" />
+            </div>
+
+            {/* Text paste */}
+            <div>
+              <p className="text-xs text-gray-500 mb-1">הדבק מ-Excel: שם [Tab] טלפון, שורה לכל איש קשר</p>
+              <textarea
+                data-testid="textarea-import"
+                value={importText}
+                onChange={e => setImportText(e.target.value)}
+                rows={4}
+                placeholder={"ישראל ישראלי\t050-1234567\nשרה כהן\t052-9876543"}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 font-mono"
+                dir="auto"
+              />
+              <div className="flex gap-2 mt-2">
+                <button
+                  data-testid="btn-do-import"
+                  onClick={handleTextImport}
+                  disabled={!importText.trim() || bulkImport.isPending}
+                  className="flex-1 bg-blue-600 text-white font-semibold py-2 rounded-lg text-sm disabled:opacity-50"
+                >
+                  {bulkImport.isPending ? "מייבא..." : "ייבא טקסט"}
+                </button>
+                <button onClick={() => setShowImport(false)} className="px-4 bg-gray-200 rounded-lg text-sm font-medium">ביטול</button>
+              </div>
+            </div>
+
+            {importResult && (
+              <p className={`text-sm font-medium ${importResult.startsWith("✅") ? "text-green-700" : "text-red-600"}`}>
+                {importResult}
+              </p>
+            )}
           </div>
         )}
       </div>
