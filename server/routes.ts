@@ -46,6 +46,13 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  // Delete ALL contacts
+  app.delete("/api/contacts", (_req, res) => {
+    const contacts = storage.getContacts();
+    contacts.forEach((c) => storage.deleteContact(c.id));
+    res.status(204).send();
+  });
+
   // Import contacts from file
   app.post("/api/contacts/import", upload.single("file"), (req, res) => {
     try {
@@ -152,6 +159,25 @@ export async function registerRoutes(
     });
 
     res.status(201).json(created);
+  });
+
+  // Get contacts who requested removal (status=remove_me in any event)
+  app.get("/api/contacts/removal-requests", (_req, res) => {
+    const contacts = storage.getContacts();
+    const allEvents = storage.getEvents();
+    const removalContactIds = new Set<string>();
+
+    for (const event of allEvents) {
+      const reports = storage.getReportsByEvent(event.id);
+      for (const report of reports) {
+        if (report.status === "remove_me" && report.contactId) {
+          removalContactIds.add(report.contactId);
+        }
+      }
+    }
+
+    const contactsToRemove = contacts.filter((c) => removalContactIds.has(c.id));
+    res.json(contactsToRemove);
   });
 
   // ===== EVENTS =====

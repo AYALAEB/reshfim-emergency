@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
-import type { Event } from "@shared/schema";
+import type { Event, Contact } from "@shared/schema";
 import {
   Dialog,
   DialogContent,
@@ -14,17 +14,24 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Calendar, ChevronLeft, Trash2, AlertTriangle } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Plus, Calendar, ChevronLeft, Trash2, AlertTriangle, UserMinus } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import EventStats from "@/components/EventStats";
 
 export default function ManagementPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [eventName, setEventName] = useState("");
+  const [selectedForRemoval, setSelectedForRemoval] = useState<string[]>([]);
   const { toast } = useToast();
 
   const { data: events, isLoading } = useQuery<Event[]>({
     queryKey: ["/api/events"],
+  });
+
+  const { data: removalRequests } = useQuery<Contact[]>({
+    queryKey: ["/api/contacts/removal-requests"],
+    enabled: showCreateModal,
   });
 
   const createEvent = useMutation({
@@ -50,9 +57,37 @@ export default function ManagementPage() {
     },
   });
 
-  const handleCreate = () => {
+  const removeContactsMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      await Promise.all(ids.map((id) => apiRequest("DELETE", `/api/contacts/${id}`)));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts/removal-requests"] });
+    },
+  });
+
+  const handleCreate = async () => {
     if (!eventName.trim()) return;
+    // First remove selected contacts, then create event
+    if (selectedForRemoval.length > 0) {
+      await removeContactsMutation.mutateAsync(selectedForRemoval);
+    }
     createEvent.mutate(eventName.trim());
+  };
+
+  const toggleRemoval = (id: string) => {
+    setSelectedForRemoval((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const toggleAll = () => {
+    if (!removalRequests) return;
+    const allIds = removalRequests.map((c) => c.id);
+    setSelectedForRemoval((prev) =>
+      prev.length === allIds.length ? [] : allIds
+    );
   };
 
   // Generate default name with current date and time
@@ -66,6 +101,12 @@ export default function ManagementPage() {
     return `אזעקה - ${day}.${month}.${year} ${hours}:${minutes}`;
   };
 
+  const openCreateModal = () => {
+    setEventName(getDefaultEventName());
+    setSelectedForRemoval([]);
+    setShowCreateModal(true);
+  };
+
   return (
     <div className="max-w-5xl mx-auto px-4 py-6">
       <div className="flex items-center justify-between mb-6">
@@ -74,10 +115,7 @@ export default function ManagementPage() {
           <p className="text-sm text-muted-foreground mt-1">צרו אירוע חדש ועקבו אחרי הדיווחים</p>
         </div>
         <Button
-          onClick={() => {
-            setEventName(getDefaultEventName());
-            setShowCreateModal(true);
-          }}
+          onClick={openCreateModal}
           className="gap-2"
           data-testid="button-create-event"
         >
@@ -142,10 +180,7 @@ export default function ManagementPage() {
           <h3 className="text-base font-semibold mb-1">אין אירועים</h3>
           <p className="text-sm text-muted-foreground mb-6">צרו אירוע חדש כדי להתחיל לעקוב אחרי דיווחים</p>
           <Button
-            onClick={() => {
-              setEventName(getDefaultEventName());
-              setShowCreateModal(true);
-            }}
+            onClick={openCreateModal}
             className="gap-2"
           >
             <Plus className="w-4 h-4" />
@@ -173,6 +208,55 @@ export default function ManagementPage() {
                 onKeyDown={(e) => e.key === "Enter" && handleCreate()}
               />
             </div>
+
+            {removalRequests && removalRequests.length > 0 && (
+              <div className="rounded-xl border border-orange-300/50 bg-orange-50/50 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <UserMinus className="w-4 h-4 text-orange-600 flex-shrink-0" />
+                  <p className="text-sm font-semibold text-orange-700">
+                    {removalRequests.length} אנשי קשר ביקשו להיות מוסרים מהרשימה
+                  </p>
+                </div>
+                <p className="text-xs text-orange-600/80">
+                  סמן את מי שברצונך להסיר לפני יצירת האירוע החדש:
+                </p>
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  <div
+                    className="flex items-center gap-2 pb-1 border-b border-orange-200/60 cursor-pointer"
+                    onClick={toggleAll}
+                  >
+                    <Checkbox
+                      checked={selectedForRemoval.length === removalRequests.length}
+                      onCheckedChange={toggleAll}
+                      className="border-orange-400"
+                    />
+                    <span className="text-xs font-medium text-orange-700">בחר הכל</span>
+                  </div>
+                  {removalRequests.map((contact) => (
+                    <div
+                      key={contact.id}
+                      className="flex items-center gap-2 cursor-pointer"
+                      onClick={() => toggleRemoval(contact.id)}
+                    >
+                      <Checkbox
+                        checked={selectedForRemoval.includes(contact.id)}
+                        onCheckedChange={() => toggleRemoval(contact.id)}
+                        className="border-orange-400"
+                      />
+                      <span className="text-sm">{contact.name}</span>
+                      <span className="text-xs text-muted-foreground font-mono" dir="ltr">
+                        {contact.phone.startsWith("972") ? "0" + contact.phone.slice(3) : contact.phone}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                {selectedForRemoval.length > 0 && (
+                  <p className="text-xs text-orange-700 font-medium">
+                    ✓ {selectedForRemoval.length} אנשי קשר יוסרו עם יצירת האירוע
+                  </p>
+                )}
+              </div>
+            )}
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="secondary" onClick={() => setShowCreateModal(false)} data-testid="button-cancel-create">
@@ -180,10 +264,10 @@ export default function ManagementPage() {
             </Button>
             <Button
               onClick={handleCreate}
-              disabled={!eventName.trim() || createEvent.isPending}
+              disabled={!eventName.trim() || createEvent.isPending || removeContactsMutation.isPending}
               data-testid="button-confirm-create"
             >
-              {createEvent.isPending ? "יוצר..." : "צור אירוע"}
+              {(createEvent.isPending || removeContactsMutation.isPending) ? "יוצר..." : "צור אירוע"}
             </Button>
           </DialogFooter>
         </DialogContent>

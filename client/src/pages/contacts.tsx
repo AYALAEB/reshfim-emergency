@@ -22,7 +22,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Upload, Pencil, Trash2, Users, FileSpreadsheet, FileText } from "lucide-react";
+import { Plus, Upload, Pencil, Trash2, Users, FileSpreadsheet, FileText, Eraser } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function formatPhoneDisplay(phone: string): string {
@@ -42,6 +52,7 @@ export default function ContactsPage() {
   const [importText, setImportText] = useState("");
   const [previewContacts, setPreviewContacts] = useState<{ name: string; phone: string }[]>([]);
   const [importMethod, setImportMethod] = useState<"file" | "text">("file");
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -93,6 +104,17 @@ export default function ContactsPage() {
       setShowPreviewModal(false);
       setPreviewContacts([]);
       toast({ title: "אנשי קשר יובאו בהצלחה" });
+    },
+  });
+
+  const clearAllContacts = useMutation({
+    mutationFn: async () => {
+      await apiRequest("DELETE", "/api/contacts");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      setShowClearConfirm(false);
+      toast({ title: "הרשימה נוקתה" });
     },
   });
 
@@ -176,6 +198,17 @@ export default function ContactsPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          {contacts && contacts.length > 0 && (
+            <Button
+              variant="ghost"
+              onClick={() => setShowClearConfirm(true)}
+              className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+              data-testid="button-clear-all"
+            >
+              <Eraser className="w-4 h-4" />
+              <span className="hidden sm:inline">נקה רשימה</span>
+            </Button>
+          )}
           <Button variant="secondary" onClick={() => setShowImportModal(true)} className="gap-2" data-testid="button-import">
             <Upload className="w-4 h-4" />
             <span className="hidden sm:inline">ייבוא</span>
@@ -254,6 +287,28 @@ export default function ContactsPage() {
           </div>
         </div>
       )}
+
+      {/* Clear All Confirmation */}
+      <AlertDialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>נקוי רשימת אנשי הקשר</AlertDialogTitle>
+            <AlertDialogDescription>
+              פעולה זו תמחק את כל {contacts?.length} אנשי הקשר מהרשימה. אין אפשרות לבטל.האם להמשיך?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ביטול</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => clearAllContacts.mutate()}
+              className="bg-destructive hover:bg-destructive/90 text-white"
+              data-testid="button-confirm-clear"
+            >
+              נקה את כל הרשימה
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Add/Edit Contact Modal */}
       <Dialog open={showAddModal} onOpenChange={(v) => !v && closeAddModal()}>
